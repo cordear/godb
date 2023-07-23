@@ -68,11 +68,13 @@ type tokenizer struct {
 	str []byte
 	pos int
 
-	err error
+	curToken     token
+	isflushToken bool
+	err          error
 }
 
 func NewTokenizer(str string) tokenizer {
-	return tokenizer{str: []byte(str), pos: 0, err: nil}
+	return tokenizer{str: []byte(str), pos: 0, curToken: token{tokenNull, ""}, isflushToken: true, err: nil}
 }
 
 // return true if eof, otherwise false
@@ -89,7 +91,28 @@ func (tk *tokenizer) popByte() {
 	}
 }
 
-func (tk *tokenizer) Next() (token, error) {
+func (tk *tokenizer) PeekToken() (token, error) {
+	if tk.err != nil {
+		return token{tokenNull, ""}, tk.err
+	}
+	if tk.isflushToken {
+		t, err := tk.next()
+		if err != nil {
+			tk.err = err
+			return token{tokenNull, ""}, tk.err
+		}
+		tk.curToken = t
+		tk.isflushToken = false
+		return tk.curToken, nil
+	}
+	return tk.curToken, nil
+}
+
+func (tk *tokenizer) PopToken() {
+	tk.isflushToken = true
+}
+
+func (tk *tokenizer) next() (token, error) {
 	if tk.err != nil {
 		return token{tokenNull, ""}, tk.err
 	}

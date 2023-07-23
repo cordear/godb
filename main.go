@@ -18,9 +18,10 @@ func main() {
 	if text, err := reader.ReadString('\n'); err == nil {
 		tk := tokenizer.NewTokenizer(text)
 		for {
-			tks, err := tk.Next()
+			tks, err := tk.PeekToken()
 			if err == nil {
 				fmt.Printf("%v\n", tks)
+				tk.PopToken()
 			} else {
 				break
 			}

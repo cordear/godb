@@ -3,15 +3,20 @@ package tokenizer
 import "bytes"
 
 var keywordMap = map[string]bool{
-	"select": true,
-	"from":   true,
-	"where":  true,
-	"insert": true,
-	"into":   true,
-	"values": true,
-	"update": true,
-	"set":    true,
-	"delete": true,
+	"select":  true,
+	"from":    true,
+	"where":   true,
+	"insert":  true,
+	"into":    true,
+	"values":  true,
+	"update":  true,
+	"set":     true,
+	"delete":  true,
+	"create":  true,
+	"table":   true,
+	"integer": true,
+	"varchar": true,
+	"drop":    true,
 }
 
 func isBlank(b byte) bool {
