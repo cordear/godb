@@ -138,7 +138,8 @@ func (tk *Tokenizer) nextMetaState() (Token, error) {
 	case '=':
 		tk.popByte()
 		return Token{TokenEq, "="}, nil
-	case '"':
+	case '\'':
+		// do not pop token here
 		return tk.nextQuoteState()
 	case '(':
 		tk.popByte()

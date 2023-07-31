@@ -24,7 +24,12 @@ func (vty VarType) String() string {
 
 type ColumnType struct {
 	varType VarType
-	len     int
+	len     int // Only meaningful when the varType is VarTypeVarchar
+}
+
+type ColumnValue struct {
+	varType VarType
+	value   []byte
 }
 
 type ExitMetaStatement struct {
@@ -36,4 +41,9 @@ type CreateTableStatement struct {
 	TableName string
 	FieldName []string
 	FiledType []ColumnType
+}
+
+type InsertStatement struct {
+	TableName string
+	Values    []ColumnValue
 }

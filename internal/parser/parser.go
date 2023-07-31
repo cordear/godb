@@ -1,6 +1,8 @@
 package parser
 
 import (
+	"bytes"
+	"encoding/binary"
 	"errors"
 	"godb/internal/tokenizer"
 	"strconv"
@@ -8,6 +10,7 @@ import (
 
 var (
 	ErrorInvaildStatement = errors.New("invaild statement")
+	ErrorInternal         = errors.New("Internal error")
 )
 
 func Parse(statement string) (interface{}, error) {
@@ -59,6 +62,8 @@ func parseCommand(tk tokenizer.Tokenizer) (interface{}, error) {
 	switch keyword.Value {
 	case "create":
 		return parseCreateCommand(tk)
+	case "insert":
+		return parseInsertCommand(tk)
 	default:
 		return nil, ErrorInvaildStatement
 	}
@@ -103,13 +108,14 @@ func parseCreateCommand(tk tokenizer.Tokenizer) (CreateTableStatement, error) {
 		symbol, err := tk.PeekToken()
 		if err != nil {
 			return CreateTableStatement{}, ErrorInvaildStatement
+		} else if symbol.TokenType == tokenizer.TokenRP {
+			break
+		} else if symbol.TokenType != tokenizer.TokenComma {
+			return CreateTableStatement{}, ErrorInvaildStatement
 		}
 		tk.PopToken()
 		ct.FieldName = append(ct.FieldName, varName.Value)
 		ct.FiledType = append(ct.FiledType, varType)
-		if symbol.TokenType == tokenizer.TokenRP {
-			break
-		}
 	}
 	return ct, nil
 }
@@ -147,4 +153,68 @@ func parseType(tk *tokenizer.Tokenizer) (ColumnType, error) {
 	default:
 		return ColumnType{}, ErrorInvaildStatement
 	}
+}
+
+func parseInsertCommand(tk tokenizer.Tokenizer) (InsertStatement, error) {
+	var cv InsertStatement
+	token, err := tk.PeekToken()
+	if err != nil || token.Value != "into" {
+		return InsertStatement{}, ErrorInvaildStatement
+	}
+	tk.PopToken()
+	tableName, err := tk.PeekToken()
+	if err != nil || tableName.TokenType != tokenizer.TokenIdentifier {
+		return InsertStatement{}, ErrorInvaildStatement
+	}
+	cv.TableName = tableName.Value
+	tk.PopToken()
+	keywordValue, err := tk.PeekToken()
+	if err != nil || keywordValue.Value != "values" {
+		return InsertStatement{}, ErrorInvaildStatement
+	}
+	tk.PopToken()
+	lp, err := tk.PeekToken()
+	if err != nil || lp.TokenType != tokenizer.TokenLP {
+		return InsertStatement{}, ErrorInvaildStatement
+	}
+	tk.PopToken()
+	for {
+		token, err := tk.PeekToken()
+		if err != nil {
+			return InsertStatement{}, ErrorInvaildStatement
+		}
+		if token.TokenType == tokenizer.TokenRP {
+			tk.PopToken()
+			break
+		}
+		switch token.TokenType {
+		case tokenizer.TokenDigit:
+			value, err := strconv.Atoi(token.Value)
+			buf := new(bytes.Buffer)
+			if err != nil {
+				return InsertStatement{}, ErrorInvaildStatement
+			}
+			convert_err := binary.Write(buf, binary.LittleEndian, int32(value))
+			if convert_err != nil {
+				return InsertStatement{}, ErrorInternal
+			}
+			cv.Values = append(cv.Values, ColumnValue{VarTypeInteger, buf.Bytes()})
+		case tokenizer.TokenString:
+			strBytes := []byte(token.Value)
+			cv.Values = append(cv.Values, ColumnValue{VarTypeVarchar, strBytes})
+		default:
+			return InsertStatement{}, ErrorInvaildStatement
+		}
+		tk.PopToken()
+		symbol, err := tk.PeekToken()
+		if err != nil {
+			return InsertStatement{}, ErrorInvaildStatement
+		} else if symbol.TokenType == tokenizer.TokenRP {
+			break
+		} else if symbol.TokenType != tokenizer.TokenComma {
+			return InsertStatement{}, ErrorInvaildStatement
+		}
+		tk.PopToken()
+	}
+	return cv, nil
 }

@@ -23,8 +23,8 @@ func main() {
 		switch ct := p.(type) {
 		case parser.CreateTableStatement:
 			fmt.Println(ct)
-		default:
-			fmt.Println("error")
+		case parser.InsertStatement:
+			fmt.Println(ct)
 		}
 	} else {
 		fmt.Println(err)
