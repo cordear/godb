@@ -13,93 +13,93 @@ var (
 )
 
 const (
-	tokenMetaCommand tokenType = iota // identifier start with '.'
-	tokenKeyword
-	tokenIndentifier
-	tokenDigit
-	tokenString
-	tokenEq    // =
-	tokenLP    // (
-	tokenRP    // )
-	tokenComma // ,
-	tokenStar  // *
-	tokenNull  // special token when a error occured or no more str to tokenize
+	TokenMetaCommand tokenType = iota // identifier start with '.'
+	TokenKeyword
+	TokenIdentifier
+	TokenDigit
+	TokenString
+	TokenEq    // =
+	TokenLP    // (
+	TokenRP    // )
+	TokenComma // ,
+	TokenStar  // *
+	TokenNull  // special token when a error occured or no more str to tokenize
 )
 
 func (t tokenType) String() string {
 	switch t {
-	case tokenMetaCommand:
+	case TokenMetaCommand:
 		return "metaCommand"
-	case tokenKeyword:
+	case TokenKeyword:
 		return "keyword"
-	case tokenIndentifier:
-		return "indentifier"
-	case tokenDigit:
+	case TokenIdentifier:
+		return "identifier"
+	case TokenDigit:
 		return "digit"
-	case tokenString:
+	case TokenString:
 		return "string"
-	case tokenEq:
+	case TokenEq:
 		return "equal"
-	case tokenLP:
+	case TokenLP:
 		return "leftParentheses"
-	case tokenRP:
+	case TokenRP:
 		return "rightParentheses"
-	case tokenComma:
+	case TokenComma:
 		return "comma"
-	case tokenStar:
+	case TokenStar:
 		return "star"
-	case tokenNull:
+	case TokenNull:
 		return "nullString"
 	default:
 		return "unexpected token"
 	}
 }
 
-type token struct {
-	tokenType tokenType
-	value     string
+type Token struct {
+	TokenType tokenType
+	Value     string
 }
 
-func (t token) String() string {
-	return "{" + fmt.Sprint(t.tokenType) + ": " + t.value + "}"
+func (t Token) String() string {
+	return "{" + fmt.Sprint(t.TokenType) + ": " + t.Value + "}"
 }
 
-type tokenizer struct {
+type Tokenizer struct {
 	str []byte
 	pos int
 
-	curToken     token
+	curToken     Token
 	isflushToken bool
 	err          error
 }
 
-func NewTokenizer(str string) tokenizer {
-	return tokenizer{str: []byte(str), pos: 0, curToken: token{tokenNull, ""}, isflushToken: true, err: nil}
+func NewTokenizer(str string) Tokenizer {
+	return Tokenizer{str: []byte(str), pos: 0, curToken: Token{TokenNull, ""}, isflushToken: true, err: nil}
 }
 
 // return true if eof, otherwise false
-func (tk *tokenizer) peekByte() (byte, bool) {
+func (tk *Tokenizer) peekByte() (byte, bool) {
 	if tk.pos == len(tk.str) {
 		return 0, true
 	}
 	return tk.str[tk.pos], false
 }
 
-func (tk *tokenizer) popByte() {
+func (tk *Tokenizer) popByte() {
 	if tk.pos < len(tk.str) {
 		tk.pos++
 	}
 }
 
-func (tk *tokenizer) PeekToken() (token, error) {
+func (tk *Tokenizer) PeekToken() (Token, error) {
 	if tk.err != nil {
-		return token{tokenNull, ""}, tk.err
+		return Token{TokenNull, ""}, tk.err
 	}
 	if tk.isflushToken {
 		t, err := tk.next()
 		if err != nil {
 			tk.err = err
-			return token{tokenNull, ""}, tk.err
+			return Token{TokenNull, ""}, tk.err
 		}
 		tk.curToken = t
 		tk.isflushToken = false
@@ -108,22 +108,22 @@ func (tk *tokenizer) PeekToken() (token, error) {
 	return tk.curToken, nil
 }
 
-func (tk *tokenizer) PopToken() {
+func (tk *Tokenizer) PopToken() {
 	tk.isflushToken = true
 }
 
-func (tk *tokenizer) next() (token, error) {
+func (tk *Tokenizer) next() (Token, error) {
 	if tk.err != nil {
-		return token{tokenNull, ""}, tk.err
+		return Token{TokenNull, ""}, tk.err
 	}
 	return tk.nextMetaState()
 }
 
-func (tk *tokenizer) nextMetaState() (token, error) {
+func (tk *Tokenizer) nextMetaState() (Token, error) {
 	for {
 		b, eof := tk.peekByte()
 		if eof {
-			return token{tokenNull, ""}, errorEndofFile
+			return Token{TokenNull, ""}, errorEndofFile
 		}
 		if !isBlank(b) {
 			break
@@ -137,31 +137,31 @@ func (tk *tokenizer) nextMetaState() (token, error) {
 		return tk.nextMetaCommandState()
 	case '=':
 		tk.popByte()
-		return token{tokenEq, "="}, nil
+		return Token{TokenEq, "="}, nil
 	case '"':
 		return tk.nextQuoteState()
 	case '(':
 		tk.popByte()
-		return token{tokenLP, "("}, nil
+		return Token{TokenLP, "("}, nil
 	case ')':
 		tk.popByte()
-		return token{tokenRP, ")"}, nil
+		return Token{TokenRP, ")"}, nil
 	case ',':
 		tk.popByte()
-		return token{tokenComma, ","}, nil
+		return Token{TokenComma, ","}, nil
 	case '*':
 		tk.popByte()
-		return token{tokenStar, "*"}, nil
+		return Token{TokenStar, "*"}, nil
 	default:
 		if isAlphaBeta(b) || isDigital(b) {
 			return tk.nextTokenState()
 		}
 		tk.err = errorInvaildState
-		return token{tokenNull, ""}, tk.err
+		return Token{TokenNull, ""}, tk.err
 	}
 }
 
-func (tk *tokenizer) nextMetaCommandState() (token, error) {
+func (tk *Tokenizer) nextMetaCommandState() (Token, error) {
 	var tmp []byte
 	for {
 		b, eof := tk.peekByte()
@@ -169,14 +169,14 @@ func (tk *tokenizer) nextMetaCommandState() (token, error) {
 			if isBlank(b) {
 				tk.popByte()
 			}
-			return token{tokenMetaCommand, string(tmp)}, nil
+			return Token{TokenMetaCommand, string(tmp)}, nil
 		}
 		tmp = append(tmp, b)
 		tk.popByte()
 	}
 }
 
-func (tk *tokenizer) nextQuoteState() (token, error) {
+func (tk *Tokenizer) nextQuoteState() (Token, error) {
 	quote, _ := tk.peekByte()
 	tk.popByte()
 	var tmp []byte
@@ -184,7 +184,7 @@ func (tk *tokenizer) nextQuoteState() (token, error) {
 		b, eof := tk.peekByte()
 		if eof {
 			tk.err = errorInvaildState
-			return token{tokenNull, ""}, tk.err
+			return Token{TokenNull, ""}, tk.err
 		}
 		if b == quote {
 			tk.popByte()
@@ -193,10 +193,10 @@ func (tk *tokenizer) nextQuoteState() (token, error) {
 		tmp = append(tmp, b)
 		tk.popByte()
 	}
-	return token{tokenString, string(tmp)}, nil
+	return Token{TokenString, string(tmp)}, nil
 }
 
-func (tk *tokenizer) nextTokenState() (token, error) {
+func (tk *Tokenizer) nextTokenState() (Token, error) {
 	var tmp []byte
 	is_number := true
 	for {
@@ -209,11 +209,11 @@ func (tk *tokenizer) nextTokenState() (token, error) {
 				tk.popByte()
 			}
 			if is_number {
-				return token{tokenDigit, string(tmp)}, nil
+				return Token{TokenDigit, string(tmp)}, nil
 			} else if isKeyword(tmp) {
-				return token{tokenKeyword, string(tmp)}, nil
+				return Token{TokenKeyword, string(tmp)}, nil
 			} else {
-				return token{tokenIndentifier, string(tmp)}, nil
+				return Token{TokenIdentifier, string(tmp)}, nil
 			}
 		}
 		tmp = append(tmp, b)

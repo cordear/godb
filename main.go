@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"fmt"
 
-	"godb/internal/tokenizer"
+	"godb/internal/parser"
 	"os"
 )
 
@@ -16,15 +16,15 @@ func main() {
 	reader := bufio.NewReader(os.Stdin)
 	print_prompt()
 	if text, err := reader.ReadString('\n'); err == nil {
-		tk := tokenizer.NewTokenizer(text)
-		for {
-			tks, err := tk.PeekToken()
-			if err == nil {
-				fmt.Printf("%v\n", tks)
-				tk.PopToken()
-			} else {
-				break
-			}
+		p, err := parser.Parse(text)
+		if err != nil {
+			panic(err)
+		}
+		switch ct := p.(type) {
+		case parser.CreateTableStatement:
+			fmt.Println(ct)
+		default:
+			fmt.Println("error")
 		}
 	} else {
 		fmt.Println(err)
