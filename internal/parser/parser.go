@@ -10,7 +10,7 @@ import (
 
 var (
 	ErrorInvaildStatement = errors.New("invaild statement")
-	ErrorInternal         = errors.New("Internal error")
+	ErrorInternal         = errors.New("internal error")
 )
 
 func Parse(statement string) (interface{}, error) {
@@ -55,7 +55,7 @@ func parseMetaCommand(tk tokenizer.Tokenizer) (interface{}, error) {
 
 func parseCommand(tk tokenizer.Tokenizer) (interface{}, error) {
 	keyword, err := tk.PeekToken()
-	if err != nil {
+	if err != nil || keyword.TokenType != tokenizer.TokenKeyword {
 		return nil, ErrorInvaildStatement
 	}
 	tk.PopToken()
@@ -64,6 +64,8 @@ func parseCommand(tk tokenizer.Tokenizer) (interface{}, error) {
 		return parseCreateCommand(tk)
 	case "insert":
 		return parseInsertCommand(tk)
+	case "select":
+		return parseSelectCommand(tk)
 	default:
 		return nil, ErrorInvaildStatement
 	}
@@ -213,6 +215,22 @@ func parseInsertCommand(tk tokenizer.Tokenizer) (InsertStatement, error) {
 			break
 		} else if symbol.TokenType != tokenizer.TokenComma {
 			return InsertStatement{}, ErrorInvaildStatement
+		}
+		tk.PopToken()
+	}
+	return cv, nil
+}
+
+func parseSelectCommand(tk tokenizer.Tokenizer) (SelectStatement, error) {
+	var cv SelectStatement
+	for {
+		token, err := tk.PeekToken()
+		if err != nil {
+			return SelectStatement{}, ErrorInvaildStatement
+		}
+		if token.TokenType == tokenizer.TokenIdentifier {
+			cv.TableName = token.Value
+			break
 		}
 		tk.PopToken()
 	}

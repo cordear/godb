@@ -47,3 +47,7 @@ type InsertStatement struct {
 	TableName string
 	Values    []ColumnValue
 }
+
+type SelectStatement struct {
+	TableName string
+}

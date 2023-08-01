@@ -25,6 +25,8 @@ func main() {
 			fmt.Println(ct)
 		case parser.InsertStatement:
 			fmt.Println(ct)
+		case parser.SelectStatement:
+			fmt.Println(ct)
 		}
 	} else {
 		fmt.Println(err)
