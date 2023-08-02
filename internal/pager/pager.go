@@ -6,7 +6,8 @@ const (
 )
 
 type Pager interface {
-	FetchPage(pageNo PageNumber, flag uint8) *PageCacheEntry
+	FetchPage(pageNo PageNumber, flag uint8) (*PageCacheEntry, error)
+	Insert(pageNo PageNumber, data []byte) error
 	GetPageNumber() PageNumber
 }
 
@@ -15,7 +16,7 @@ type pager struct {
 	PageNumber PageNumber // page number in the database file
 }
 
-func (pgr *pager) FetchPage(pageNo PageNumber, flag uint8) *PageCacheEntry {
+func (pgr *pager) FetchPage(pageNo PageNumber, flag uint8) (*PageCacheEntry, error) {
 	return pgr.PageCache.FetchPage(pageNo, flag)
 }
 

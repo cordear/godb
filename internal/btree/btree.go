@@ -5,16 +5,196 @@ import (
 )
 
 type Btree interface {
-	Insert()
+	Insert(key uint32, data []byte) error
+}
+
+type BtCursor interface {
+	Insert(key uint32, data []byte) error
+	MoveToRoot() error
+	MoveTo(key uint32)
+	MoveNext() error
+	MoveToParent() error
+	MovetoChild(pageNo pager.PageNumber)
+	CompareKey(key uint32) int8
 }
 
 type btree struct {
-	Shared *BtreeShared
+	Shared *BtreeShared // shared content
 }
 
-// sharable content for all btree within the same database file
+type btCursor struct {
+	Btree      *btree           // btree that own the curosr
+	Mem        *pager.Mempage   // the in memory page the curosr point to
+	CellIndex  uint16           // cell index the curosr point to
+	RootPageNo pager.PageNumber // btree root page namber
+	IsMatch    int8             // last compare result
+	PStack     []*pager.Mempage // stack for parents of current page
+}
+
+// sharable content of the btree
 type BtreeShared struct {
-	Pager   pager.Pager // the page cache
-	PageOne Mempage     // first page of the database, always in memory
-	numPage uint32      // number of page in the database
+	Pager    pager.Pager   // the page cache
+	PageOne  pager.Mempage // first page of the database, always in memory
+	BtCursor []BtCursor    // current opened cursor on the btree
+	NumPage  uint32        // number of page in the database
+}
+
+// func (bt *btree) Insert(key uint32, data []byte) error {
+// 	pte, err := bt.Shared.Pager.FetchPage(bt.rootPageNo, pager.PAGE_CACHE_CREAT|pager.PAGE_CACHE_FETCH)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	root := pte.Data
+// 	loc := root.BinarySearchKey(key)
+// }
+
+// move to the root page of the btree
+func (btc *btCursor) MoveToRoot() error {
+	// get the root page
+	rootMem, err := btc.Btree.Shared.Pager.FetchPage(btc.RootPageNo, pager.PAGE_CACHE_FETCH|pager.PAGE_CACHE_CREAT)
+	if err != nil {
+		return err
+	}
+	btc.Mem = rootMem.Data
+	btc.CellIndex = 0
+	// clear the parents stack
+	btc.PStack = nil
+	return nil
+}
+
+func (btc *btCursor) MoveTo(key uint32) (int8, error) {
+	err := btc.MoveToRoot()
+	if err != nil {
+		return -2, err
+	}
+	var lo uint16 = 0
+	hi := btc.Mem.CellNum - 1
+	var child pager.PageNumber = 0
+	var c int8 = -1
+	for {
+		for lo <= hi {
+			btc.CellIndex = lo + (hi-lo)/2
+			c = btc.CompareKey(key)
+			if c < 0 {
+				hi = btc.CellIndex - 1
+			} else if c == 0 {
+				btc.IsMatch = c
+				return c, nil
+			} else {
+				lo = btc.CellIndex + 1
+			}
+		}
+		if lo >= btc.Mem.CellNum {
+			child, err = btc.Mem.GetRightChild()
+			if err != nil {
+				return -2, err
+			}
+		} else {
+			child = btc.Mem.GetKthLeftPageNumber(lo)
+		}
+		if child == 0 {
+			btc.IsMatch = c
+			return c, nil
+		}
+		err := btc.MoveToChild(child)
+		if err != nil {
+			return -2, err
+		}
+	}
+}
+
+func (btc *btCursor) MoveToChild(pageNo pager.PageNumber) error {
+	// get the child page
+	childMem, err := btc.Btree.Shared.Pager.FetchPage(pageNo, pager.PAGE_CACHE_FETCH|pager.PAGE_CACHE_CREAT)
+	if err != nil {
+		return err
+	}
+	// before switch to the child page, push the current page into stack
+	btc.PStack = append(btc.PStack, btc.Mem)
+	btc.CellIndex = 0
+	btc.Mem = childMem.Data
+	return nil
+}
+
+func (btc *btCursor) MoveNext() error {
+	btc.CellIndex++
+	// check if the cursor has reached the end
+	if btc.CellIndex >= btc.Mem.CellNum {
+		rh, err := btc.Mem.GetRightChild()
+		// if the right child exist
+		if rh != 0 {
+			err = btc.MoveToChild(rh)
+			if err != nil {
+				return err
+			}
+			err = btc.MoveToLeftMost()
+			if err != nil {
+				return nil
+			}
+			return nil
+			// otherwise the cursor is in a leaf page. The cursor need to move to parent page before advance
+		} else {
+			for {
+				// if the parent stack is empty, then the cursor can not advance anymore
+				if len(btc.PStack) == 0 {
+					return nil
+				}
+				// move to the parent page
+				err = btc.MoveToParent()
+				if err != nil {
+					return err
+				}
+				// if the cursor not come from a right page of a internal page, the cursor is in correct position
+				if btc.CellIndex < btc.Mem.CellNum {
+					break
+				}
+			}
+			return btc.MoveNext()
+		}
+	}
+	err := btc.MoveToLeftMost()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (btc *btCursor) MoveToLeftMost() error {
+	for {
+		leftPageNo := btc.Mem.GetKthLeftPageNumber(btc.CellIndex)
+		if leftPageNo != 0 {
+			btc.MoveToChild(leftPageNo)
+		} else {
+			break
+		}
+	}
+	return nil
+}
+func (btc *btCursor) CompareKey(key uint32) int8 {
+	cursorKey := btc.Mem.GetKthKey(btc.CellIndex)
+	if cursorKey > key {
+		return 1
+	} else if cursorKey == key {
+		return 0
+	} else {
+		return -1
+	}
+}
+
+// the caller should guaratee there has at least one parent in the stack
+func (btc *btCursor) MoveToParent() error {
+	parent := btc.PStack[len(btc.PStack)-1]
+	// pop the direct parent
+	btc.PStack = btc.PStack[:len(btc.PStack)-1]
+	// if the current page is the right page of the parent page, set the index to CellNum
+	btc.CellIndex = parent.CellNum
+	// find current page in the parent
+	for i := 0; i < int(parent.CellNum); i++ {
+		if btc.Mem.PageNo == parent.GetKthLeftPageNumber(uint16(i)) {
+			btc.CellIndex = uint16(i)
+			break
+		}
+	}
+	btc.Mem = parent
+	return nil
 }

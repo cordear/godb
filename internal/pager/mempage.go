@@ -1,11 +1,17 @@
-package btree
+package pager
 
 import (
 	"errors"
 	"godb/internal/utils"
 )
 
-type pageNumber uint32
+var (
+	ErrorInvaildPageType = errors.New("invaild page type")
+)
+
+// each page has a unique page number that must bigger than 0.
+// page number zero means no such page.
+type PageNumber uint32
 
 // The flag used in page header. A vaild flag must be one of:
 // - PAGE_INDEX
@@ -25,11 +31,12 @@ const (
 //    0       1     flags
 //    1       2     number of cells
 //    3       5     reserved
-//    8       4     right child. only used in non-leaf page
+//    8       4     right child page number. only used in non-leaf page
 
 // A page in memory
 type Mempage struct {
-	PageNo            pageNumber // page number
+	IsInit            bool       // true if init before, false if need reinit
+	PageNo            PageNumber // page number
 	IsDataPage        bool       // true if table b-tree. false if index b-tree
 	IsDataLeaf        bool       // true if table b-tree leaf. false otherwise
 	IsLeaf            bool       // true if leaf page. false otherwise
@@ -50,11 +57,11 @@ func checkFlag(flag uint8) bool {
 	return true
 }
 
-func NewMemPage(flag uint8) (Mempage, error) {
-	var mem Mempage
+func NewMemPage(pageNo PageNumber, flag uint8) (*Mempage, error) {
+	mem := new(Mempage)
 	raw := make([]byte, 4096)
 	if !checkFlag(flag) {
-		return Mempage{}, errors.New("invaild flag")
+		return nil, errors.New("invaild flag")
 	}
 	mem.RawData = raw
 	mem.IsLeaf = bool((flag & PAGE_LEAF) != 0)
@@ -62,6 +69,8 @@ func NewMemPage(flag uint8) (Mempage, error) {
 	mem.IsDataLeaf = bool(mem.IsDataPage && mem.IsLeaf)
 	mem.CellNum = 0
 	mem.IsPageOne = false
+	mem.PageNo = pageNo
+	mem.IsInit = true
 	hdr := 0
 	var first uint16
 	if mem.IsPageOne {
@@ -79,4 +88,46 @@ func NewMemPage(flag uint8) (Mempage, error) {
 	raw[hdr] = uint8(flag)
 	utils.SetUint16(raw[hdr+1:], mem.CellNum)
 	return mem, nil
+}
+
+// only the non-leaf child has a right child
+func (mem *Mempage) GetRightChild() (PageNumber, error) {
+	if mem.IsLeaf {
+		return 0, ErrorInvaildPageType
+	}
+	offset := 0
+	if mem.IsPageOne {
+		offset += 100
+	}
+	return PageNumber(utils.GetUint32(mem.RawData[offset+8:])), nil
+}
+
+func (mem *Mempage) GetKthCellIndex(k uint16) uint16 {
+	return utils.GetUint16(mem.RawData[mem.CellIndexOffset+k*2:])
+}
+
+func (mem *Mempage) GetKthLeftPageNumber(k uint16) PageNumber {
+	offset := mem.GetKthCellIndex(k) - 4
+	return PageNumber(utils.GetUint32(mem.RawData[offset:]))
+}
+
+func (mem *Mempage) GetKthCellSize(k uint16) uint16 {
+	offset := mem.GetKthCellIndex(k) - 8
+	return utils.GetUint16(mem.RawData[offset:])
+}
+
+func (mem *Mempage) GetKthKey(k uint16) uint32 {
+	offset := mem.GetKthCellIndex(k) - 12
+	return utils.GetUint32(mem.RawData[offset:])
+}
+
+func (mem *Mempage) GetKthCellContent(k uint16) ([]byte, uint16) {
+	offset := mem.GetKthCellIndex(k)
+	size := mem.GetKthCellSize(k)
+	return mem.RawData[offset-12-size:], size
+}
+
+func (mem *Mempage) WriteCellContent(key uint32, data []byte) error {
+
+	return nil
 }
