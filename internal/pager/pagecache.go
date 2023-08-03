@@ -28,7 +28,7 @@ func (pcache *pageCache) FetchPage(pageNo PageNumber, flag uint8) (*PageCacheEnt
 	} else if (flag & PAGE_CACHE_CREAT) == 1 {
 		newPageNo := (*pcache.pager).GetPageNumber() + 1
 		pce := new(PageCacheEntry)
-		pce.Data, _ = NewMemPage()
+		// pce.Data, _ = NewMemPage()
 		pce.Dirty = true
 		pcache.cacheHash[newPageNo] = pce
 		return pce, nil

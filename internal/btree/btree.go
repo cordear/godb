@@ -48,6 +48,22 @@ type BtreeShared struct {
 // 	loc := root.BinarySearchKey(key)
 // }
 
+func (btc *btCursor) Insert(key uint32, data []byte) error {
+	// move to the proper position
+	loc, err := btc.MoveTo(key)
+	if err != nil {
+		return err
+	}
+	if loc == 0 { // if loc == 0, then the cursor is in the key itself
+		cell := pager.NewCell(key, data)
+		cell.LeftChildPageNo = btc.Mem.GetKthLeftPageNumber(btc.CellIndex)
+	} else if loc > 0 && btc.Mem.CellNum > 0 { // the cursor is on a leaf page
+		btc.CellIndex++
+	}
+	// TODO: finish the cursor insert
+	return nil
+}
+
 // move to the root page of the btree
 func (btc *btCursor) MoveToRoot() error {
 	// get the root page
@@ -62,15 +78,22 @@ func (btc *btCursor) MoveToRoot() error {
 	return nil
 }
 
+// move to the key.
+// return value > 0 if curosr pointing a value smaller than the search key
 func (btc *btCursor) MoveTo(key uint32) (int8, error) {
+	// always reset the curosr to root brefore move
 	err := btc.MoveToRoot()
 	if err != nil {
 		return -2, err
+	}
+	if btc.Mem.CellNum == 0 {
+		return 1, nil
 	}
 	var lo uint16 = 0
 	hi := btc.Mem.CellNum - 1
 	var child pager.PageNumber = 0
 	var c int8 = -1
+	// binary search the content index array
 	for {
 		for lo <= hi {
 			btc.CellIndex = lo + (hi-lo)/2
@@ -84,12 +107,14 @@ func (btc *btCursor) MoveTo(key uint32) (int8, error) {
 				lo = btc.CellIndex + 1
 			}
 		}
+		// the key is bigger than all the key in the page, move to the right child
 		if lo >= btc.Mem.CellNum {
-			child, err = btc.Mem.GetRightChild()
-			if err != nil {
-				return -2, err
+			child = btc.Mem.GetRightChild()
+			if child == 0 {
+				return 1, nil
 			}
 		} else {
+			// otherwise the cursor stop at the key that exactly bigger then the search key
 			child = btc.Mem.GetKthLeftPageNumber(lo)
 		}
 		if child == 0 {
@@ -120,10 +145,10 @@ func (btc *btCursor) MoveNext() error {
 	btc.CellIndex++
 	// check if the cursor has reached the end
 	if btc.CellIndex >= btc.Mem.CellNum {
-		rh, err := btc.Mem.GetRightChild()
+		rh := btc.Mem.GetRightChild()
 		// if the right child exist
 		if rh != 0 {
-			err = btc.MoveToChild(rh)
+			err := btc.MoveToChild(rh)
 			if err != nil {
 				return err
 			}
@@ -140,7 +165,7 @@ func (btc *btCursor) MoveNext() error {
 					return nil
 				}
 				// move to the parent page
-				err = btc.MoveToParent()
+				err := btc.MoveToParent()
 				if err != nil {
 					return err
 				}

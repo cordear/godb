@@ -1,6 +1,8 @@
 package pager
 
 import (
+	"bytes"
+	"encoding/binary"
 	"errors"
 	"godb/internal/utils"
 )
@@ -47,6 +49,22 @@ type Mempage struct {
 	CellContentOffset uint16     // offset for cell content, only meaningful for leaf page
 }
 
+// an in memory cell
+type Cell struct {
+	LeftChildPageNo PageNumber // left child page number
+	Payloadsize     uint16     // the payload size, exclude the key
+	Key             uint32     // key
+	Payload         []byte     // pointer to the payload
+}
+
+func NewCell(key uint32, payload []byte) Cell {
+	var cell Cell
+	cell.LeftChildPageNo = 0
+	cell.Key = key
+	cell.Payloadsize = uint16(len(payload))
+	return cell
+}
+
 func checkFlag(flag uint8) bool {
 	if flag != PAGE_INDEX &&
 		flag != PAGE_INDEX|PAGE_LEAF &&
@@ -68,8 +86,12 @@ func NewMemPage(pageNo PageNumber, flag uint8) (*Mempage, error) {
 	mem.IsDataPage = bool((flag & PAGE_DATA) != 0)
 	mem.IsDataLeaf = bool(mem.IsDataPage && mem.IsLeaf)
 	mem.CellNum = 0
-	mem.IsPageOne = false
 	mem.PageNo = pageNo
+	if mem.PageNo == 1 {
+		mem.IsPageOne = true
+	} else {
+		mem.IsPageOne = false
+	}
 	mem.IsInit = true
 	hdr := 0
 	var first uint16
@@ -91,15 +113,15 @@ func NewMemPage(pageNo PageNumber, flag uint8) (*Mempage, error) {
 }
 
 // only the non-leaf child has a right child
-func (mem *Mempage) GetRightChild() (PageNumber, error) {
+func (mem *Mempage) GetRightChild() PageNumber {
 	if mem.IsLeaf {
-		return 0, ErrorInvaildPageType
+		return 0
 	}
 	offset := 0
 	if mem.IsPageOne {
 		offset += 100
 	}
-	return PageNumber(utils.GetUint32(mem.RawData[offset+8:])), nil
+	return PageNumber(utils.GetUint32(mem.RawData[offset+8:]))
 }
 
 func (mem *Mempage) GetKthCellIndex(k uint16) uint16 {
@@ -112,22 +134,43 @@ func (mem *Mempage) GetKthLeftPageNumber(k uint16) PageNumber {
 }
 
 func (mem *Mempage) GetKthCellSize(k uint16) uint16 {
-	offset := mem.GetKthCellIndex(k) - 8
+	offset := mem.GetKthCellIndex(k) - 6
 	return utils.GetUint16(mem.RawData[offset:])
 }
 
 func (mem *Mempage) GetKthKey(k uint16) uint32 {
-	offset := mem.GetKthCellIndex(k) - 12
+	offset := mem.GetKthCellIndex(k) - 10
 	return utils.GetUint32(mem.RawData[offset:])
 }
 
 func (mem *Mempage) GetKthCellContent(k uint16) ([]byte, uint16) {
 	offset := mem.GetKthCellIndex(k)
 	size := mem.GetKthCellSize(k)
-	return mem.RawData[offset-12-size:], size
+	return mem.RawData[offset-10-size:], size
 }
 
 func (mem *Mempage) WriteCellContent(key uint32, data []byte) error {
 
 	return nil
+}
+
+func (mem *Mempage) GetKthCell(k uint16) Cell {
+	offset := mem.GetKthCellIndex(k)
+	size := mem.GetKthCellSize(k)
+	leftChild := mem.GetKthLeftPageNumber(k)
+	key := mem.GetKthKey(k)
+	return Cell{LeftChildPageNo: leftChild,
+		Payloadsize: size,
+		Key:         key,
+		Payload:     mem.RawData[offset:]}
+}
+
+func (mem *Mempage) InsertCellFast(cell Cell, i uint16) {
+	// convert cell to raw bytes
+	buf := bytes.NewBuffer([]byte{})
+	binary.Write(buf, binary.LittleEndian, cell.LeftChildPageNo)
+	binary.Write(buf, binary.LittleEndian, cell.Payloadsize)
+	binary.Write(buf, binary.LittleEndian, cell.Key)
+	binary.Write(buf, binary.LittleEndian, cell.Payload)
+	// TODO: finish the remaining task for insert
 }

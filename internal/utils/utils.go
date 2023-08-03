@@ -6,9 +6,12 @@ import (
 )
 
 func SetUint16(raw []byte, data uint16) {
-	buf := bytes.NewBuffer(raw)
+	buf := bytes.NewBuffer([]byte{})
 	buf.Reset()
 	binary.Write(buf, binary.LittleEndian, data)
+	for i, v := range buf.Bytes() {
+		raw[i] = v
+	}
 }
 
 func GetUint16(raw []byte) uint16 {
@@ -16,9 +19,12 @@ func GetUint16(raw []byte) uint16 {
 }
 
 func SetUint32(raw []byte, data uint32) {
-	buf := bytes.NewBuffer(raw)
+	buf := bytes.NewBuffer([]byte{})
 	buf.Reset()
 	binary.Write(buf, binary.LittleEndian, data)
+	for i, v := range buf.Bytes() {
+		raw[i] = v
+	}
 }
 
 func GetUint32(raw []byte) uint32 {
