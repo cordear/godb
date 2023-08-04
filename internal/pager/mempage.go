@@ -32,7 +32,8 @@ const (
 // OFFSET	SIZE	DATA
 //    0       1     flags
 //    1       2     number of cells
-//    3       5     reserved
+//    3       2     first free block
+//    5       3     reserved
 //    8       4     right child page number. only used in non-leaf page
 
 // A page in memory
@@ -45,6 +46,7 @@ type Mempage struct {
 	IsPageOne         bool       // true if page 1. false otherwise
 	CellNum           uint16     // number of cell inside the page
 	RawData           []byte     // raw data of the page
+	HeaderOffset      uint16     // 100 if page 1, otherwise 0
 	CellIndexOffset   uint16     // offset for cell index
 	CellContentOffset uint16     // offset for cell content, only meaningful for leaf page
 }
@@ -54,7 +56,8 @@ type Cell struct {
 	LeftChildPageNo PageNumber // left child page number
 	Payloadsize     uint16     // the payload size, exclude the key
 	Key             uint32     // key
-	Payload         []byte     // pointer to the payload
+	RawData         []byte     // pointer to the cell itself
+	Payload         []byte     // pointer to payload
 }
 
 func NewCell(key uint32, payload []byte) Cell {
@@ -62,6 +65,7 @@ func NewCell(key uint32, payload []byte) Cell {
 	cell.LeftChildPageNo = 0
 	cell.Key = key
 	cell.Payloadsize = uint16(len(payload))
+	cell.Payload = payload
 	return cell
 }
 
@@ -93,10 +97,11 @@ func NewMemPage(pageNo PageNumber, flag uint8) (*Mempage, error) {
 		mem.IsPageOne = false
 	}
 	mem.IsInit = true
-	hdr := 0
+	hdr := uint16(0)
 	var first uint16
 	if mem.IsPageOne {
 		first += 100
+		hdr += 100
 	} else {
 		first = 0
 	}
@@ -106,22 +111,36 @@ func NewMemPage(pageNo PageNumber, flag uint8) (*Mempage, error) {
 		first += 12
 	}
 	mem.CellIndexOffset = first
+	mem.HeaderOffset = hdr
 	mem.CellContentOffset = 4096
 	raw[hdr] = uint8(flag)
 	utils.SetUint16(raw[hdr+1:], mem.CellNum)
+	utils.SetUint16(raw[hdr+3:], first+2)
+	utils.SetUint16(raw[first+4:], 4096-first-2)
 	return mem, nil
+}
+
+// return the first byte of the allocated space that bigger than size
+func (mem *Mempage) FindFreeSapce(size uint16) uint16 {
+	freePointer := utils.GetUint16(mem.RawData[mem.HeaderOffset+3:]) // the first free block offset
+	freeSize := utils.GetUint16(mem.RawData[freePointer+2:])         // the first free block size
+	if freeSize > size {
+		remain := freeSize - size
+		utils.SetUint16(mem.RawData[freePointer+2:], remain)
+		return freePointer + remain
+	}
+	// FIXME: this return is just a placeholder to make the complier happy
+	return freePointer
+}
+
+func (mem *Mempage) AllocateSpace(size uint16) uint16 {
+	offset := mem.FindFreeSapce(size)
+	return offset
 }
 
 // only the non-leaf child has a right child
 func (mem *Mempage) GetRightChild() PageNumber {
-	if mem.IsLeaf {
-		return 0
-	}
-	offset := 0
-	if mem.IsPageOne {
-		offset += 100
-	}
-	return PageNumber(utils.GetUint32(mem.RawData[offset+8:]))
+	return PageNumber(utils.GetUint32(mem.RawData[mem.HeaderOffset+8:]))
 }
 
 func (mem *Mempage) GetKthCellIndex(k uint16) uint16 {
@@ -129,24 +148,24 @@ func (mem *Mempage) GetKthCellIndex(k uint16) uint16 {
 }
 
 func (mem *Mempage) GetKthLeftPageNumber(k uint16) PageNumber {
-	offset := mem.GetKthCellIndex(k) - 4
+	offset := mem.GetKthCellIndex(k)
 	return PageNumber(utils.GetUint32(mem.RawData[offset:]))
 }
 
 func (mem *Mempage) GetKthCellSize(k uint16) uint16 {
-	offset := mem.GetKthCellIndex(k) - 6
+	offset := mem.GetKthCellIndex(k) + 4
 	return utils.GetUint16(mem.RawData[offset:])
 }
 
 func (mem *Mempage) GetKthKey(k uint16) uint32 {
-	offset := mem.GetKthCellIndex(k) - 10
+	offset := mem.GetKthCellIndex(k) + 6
 	return utils.GetUint32(mem.RawData[offset:])
 }
 
 func (mem *Mempage) GetKthCellContent(k uint16) ([]byte, uint16) {
 	offset := mem.GetKthCellIndex(k)
 	size := mem.GetKthCellSize(k)
-	return mem.RawData[offset-10-size:], size
+	return mem.RawData[offset+10:], size
 }
 
 func (mem *Mempage) WriteCellContent(key uint32, data []byte) error {
@@ -162,7 +181,8 @@ func (mem *Mempage) GetKthCell(k uint16) Cell {
 	return Cell{LeftChildPageNo: leftChild,
 		Payloadsize: size,
 		Key:         key,
-		Payload:     mem.RawData[offset:]}
+		RawData:     mem.RawData[offset:],
+		Payload:     mem.RawData[offset+10:]}
 }
 
 func (mem *Mempage) InsertCellFast(cell Cell, i uint16) {
@@ -173,4 +193,17 @@ func (mem *Mempage) InsertCellFast(cell Cell, i uint16) {
 	binary.Write(buf, binary.LittleEndian, cell.Key)
 	binary.Write(buf, binary.LittleEndian, cell.Payload)
 	// TODO: finish the remaining task for insert
+
+	// insert into CellIndex
+	base := mem.CellIndexOffset + 2*i
+	copy(mem.RawData[base+2:], mem.RawData[base:base+2*(mem.CellNum-i)])
+	// insert into CellContent
+	size := uint16(buf.Len())
+	offset := mem.AllocateSpace(size)
+	copy(mem.RawData[offset:], buf.Bytes())
+	utils.SetUint16(mem.RawData[base:], offset)
+	// increase CellNum in mem
+	mem.CellNum += 1
+	utils.SetUint16(mem.RawData[1:], mem.CellNum)
+
 }

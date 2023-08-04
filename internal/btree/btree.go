@@ -54,13 +54,14 @@ func (btc *btCursor) Insert(key uint32, data []byte) error {
 	if err != nil {
 		return err
 	}
+	cell := pager.NewCell(key, data)
 	if loc == 0 { // if loc == 0, then the cursor is in the key itself
-		cell := pager.NewCell(key, data)
 		cell.LeftChildPageNo = btc.Mem.GetKthLeftPageNumber(btc.CellIndex)
 	} else if loc > 0 && btc.Mem.CellNum > 0 { // the cursor is on a leaf page
 		btc.CellIndex++
 	}
 	// TODO: finish the cursor insert
+	btc.Mem.InsertCellFast(cell, btc.CellIndex)
 	return nil
 }
 

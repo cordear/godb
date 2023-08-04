@@ -7,7 +7,7 @@ const (
 
 type Pager interface {
 	FetchPage(pageNo PageNumber, flag uint8) (*PageCacheEntry, error)
-	Insert(pageNo PageNumber, data []byte) error
+	// Insert(pageNo PageNumber, data []byte) error
 	GetPageNumber() PageNumber
 }
 
@@ -22,4 +22,15 @@ func (pgr *pager) FetchPage(pageNo PageNumber, flag uint8) (*PageCacheEntry, err
 
 func (pgr *pager) GetPageNumber() PageNumber {
 	return pgr.PageNumber
+}
+
+// function used for test
+func NewPager() pager {
+	var pager pager
+	var pcache pageCache
+	pcache.cacheHash = make(map[PageNumber]*PageCacheEntry)
+	pcache.pager = &pager
+	pager.PageCache = &pcache
+	pager.PageNumber = 1
+	return pager
 }
