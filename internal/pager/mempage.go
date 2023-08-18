@@ -11,8 +11,9 @@ var (
 	ErrorInvaildPageType = errors.New("invaild page type")
 )
 
+// a PageNumber is a uint32 value that indicate the location of a page in database file.
 // each page has a unique page number that must bigger than 0.
-// page number zero means no such page.
+// page number zero only used as function return value that means no such page.
 type PageNumber uint32
 
 // The flag used in page header. A vaild flag must be one of:
@@ -138,8 +139,13 @@ func (mem *Mempage) AllocateSpace(size uint16) uint16 {
 	return offset
 }
 
-// only the non-leaf child has a right child
+// return the right child of the page. if the page is a leaf page,
+// then return 0.
 func (mem *Mempage) GetRightChild() PageNumber {
+	// only the non-leaf child has a right child
+	if mem.IsLeaf {
+		return PageNumber(0)
+	}
 	return PageNumber(utils.GetUint32(mem.RawData[mem.HeaderOffset+8:]))
 }
 

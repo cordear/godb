@@ -99,7 +99,8 @@ func (btc *btCursor) MoveTo(key uint32) (int8, error) {
 		for lo <= hi {
 			btc.CellIndex = lo + (hi-lo)/2
 			c = btc.CompareKey(key)
-			if c < 0 {
+			// if c > 0, which means cursorKey < key
+			if c > 0 {
 				hi = btc.CellIndex - 1
 			} else if c == 0 {
 				btc.IsMatch = c
@@ -196,6 +197,11 @@ func (btc *btCursor) MoveToLeftMost() error {
 	}
 	return nil
 }
+
+// compare key to the key that cursor current point to.
+// > 0 if cursorKey > key;
+// = 0 if cursorKey = key;
+// < 0 if cursorKey < key.
 func (btc *btCursor) CompareKey(key uint32) int8 {
 	cursorKey := btc.Mem.GetKthKey(btc.CellIndex)
 	if cursorKey > key {

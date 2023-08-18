@@ -15,6 +15,7 @@ func TestInsert(t *testing.T) {
 	cursor.Btree = &btree
 	cursor.RootPageNo = 2
 	cursor.Insert(1, []byte{0x1, 0x2, 0x3})
+	cursor.Insert(2, []byte{0x3, 0x4, 0x5})
 	cell := cursor.Mem.GetKthCell(0)
 	t.Log(cell.RawData)
 	t.Log(cell.Payload)
