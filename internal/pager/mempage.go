@@ -179,6 +179,7 @@ func (mem *Mempage) WriteCellContent(key uint32, data []byte) error {
 	return nil
 }
 
+// get kth cell in the memPage
 func (mem *Mempage) GetKthCell(k uint16) Cell {
 	offset := mem.GetKthCellIndex(k)
 	size := mem.GetKthCellSize(k)
@@ -187,8 +188,8 @@ func (mem *Mempage) GetKthCell(k uint16) Cell {
 	return Cell{LeftChildPageNo: leftChild,
 		Payloadsize: size,
 		Key:         key,
-		RawData:     mem.RawData[offset:],
-		Payload:     mem.RawData[offset+10:]}
+		RawData:     mem.RawData[offset : offset+10+size],
+		Payload:     mem.RawData[offset+10 : offset+10+size]}
 }
 
 func (mem *Mempage) InsertCellFast(cell Cell, i uint16) {

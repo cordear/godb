@@ -57,7 +57,11 @@ func (btc *btCursor) Insert(key uint32, data []byte) error {
 	cell := pager.NewCell(key, data)
 	if loc == 0 { // if loc == 0, then the cursor is in the key itself
 		cell.LeftChildPageNo = btc.Mem.GetKthLeftPageNumber(btc.CellIndex)
-	} else if loc > 0 && btc.Mem.CellNum > 0 { // the cursor is on a leaf page
+	} else if loc > 0 && btc.Mem.CellNum > 0 {
+		// the cursor point to a value bigger than the key. The key will insert on the left side
+
+	} else if loc < 0 {
+		// the cursor point to a value smaller than the key, The key will insert on the right side
 		btc.CellIndex++
 	}
 	// TODO: finish the cursor insert
@@ -79,45 +83,49 @@ func (btc *btCursor) MoveToRoot() error {
 	return nil
 }
 
-// move to the key.
-// return value > 0 if curosr pointing a value smaller than the search key
+// move the cursor to a proper position relate to the key.
+// return value > 0 if cursor point to a value bigger than the search key or cursor on a empty page
+// return value = 0 if cursor point to exact the same key
+// return value < 0 if cursor point to a value smaller than the search key
 func (btc *btCursor) MoveTo(key uint32) (int8, error) {
-	// always reset the curosr to root brefore move
+	// reset the cursor to root page, the CellIndex is set to 0.
 	err := btc.MoveToRoot()
 	if err != nil {
 		return -2, err
 	}
+	// the page is empty, directly return
 	if btc.Mem.CellNum == 0 {
 		return 1, nil
 	}
-	var lo uint16 = 0
-	hi := btc.Mem.CellNum - 1
+	var lo int32 = 0
+	var hi int32 = int32(btc.Mem.CellNum) - 1
 	var child pager.PageNumber = 0
 	var c int8 = -1
 	// binary search the content index array
 	for {
 		for lo <= hi {
-			btc.CellIndex = lo + (hi-lo)/2
+			btc.CellIndex = uint16(lo + (hi-lo)/2)
 			c = btc.CompareKey(key)
 			// if c > 0, which means cursorKey < key
 			if c > 0 {
-				hi = btc.CellIndex - 1
+				hi = int32(btc.CellIndex) - 1
 			} else if c == 0 {
 				btc.IsMatch = c
 				return c, nil
 			} else {
-				lo = btc.CellIndex + 1
+				lo = int32(btc.CellIndex) + 1
 			}
 		}
 		// the key is bigger than all the key in the page, move to the right child
-		if lo >= btc.Mem.CellNum {
+		if lo >= int32(btc.Mem.CellNum) {
 			child = btc.Mem.GetRightChild()
+			// if no right child, then the cursor is point to a value than smaller then the key
 			if child == 0 {
-				return 1, nil
+				return -1, nil
 			}
 		} else {
 			// otherwise the cursor stop at the key that exactly bigger then the search key
-			child = btc.Mem.GetKthLeftPageNumber(lo)
+			child = btc.Mem.GetKthLeftPageNumber(uint16(lo))
 		}
 		if child == 0 {
 			btc.IsMatch = c
