@@ -34,7 +34,8 @@ const (
 //    0       1     flags
 //    1       2     number of cells
 //    3       2     first free block
-//    5       3     reserved
+//    5       2     top offset of the cell content area
+//    7       1     reserved
 //    8       4     right child page number. only used in non-leaf page
 
 // A page in memory
@@ -116,8 +117,7 @@ func NewMemPage(pageNo PageNumber, flag uint8) (*Mempage, error) {
 	mem.CellContentOffset = 4096
 	raw[hdr] = uint8(flag)
 	utils.SetUint16(raw[hdr+1:], mem.CellNum)
-	utils.SetUint16(raw[hdr+3:], first+2)
-	utils.SetUint16(raw[first+4:], 4096-first-2)
+	utils.SetUint16(raw[hdr+5:], 4096)
 	return mem, nil
 }
 
@@ -135,7 +135,17 @@ func (mem *Mempage) FindFreeSapce(size uint16) uint16 {
 }
 
 func (mem *Mempage) AllocateSpace(size uint16) uint16 {
-	offset := mem.FindFreeSapce(size)
+	var offset uint16 = 0 // the return offset
+	// if there is a freeblock, allocate sapce from freeblock
+	if mem.RawData[mem.HeaderOffset+3] != 0 || mem.RawData[mem.HeaderOffset+4] != 0 {
+		offset = mem.FindFreeSapce(size)
+		return offset
+	}
+	//allocate sapce form the area between cell pointer array and cell content area
+	top := utils.GetUint16(mem.RawData[mem.HeaderOffset+5:])
+	top -= size
+	utils.SetUint16(mem.RawData[mem.HeaderOffset+5:], top)
+	offset = top
 	return offset
 }
 
@@ -211,6 +221,6 @@ func (mem *Mempage) InsertCellFast(cell Cell, i uint16) {
 	utils.SetUint16(mem.RawData[base:], offset)
 	// increase CellNum in mem
 	mem.CellNum += 1
-	utils.SetUint16(mem.RawData[1:], mem.CellNum)
+	utils.SetUint16(mem.RawData[mem.HeaderOffset+1:], mem.CellNum)
 
 }
