@@ -52,6 +52,8 @@ type Mempage struct {
 	CellIndexOffset   uint16     // offset for cell index
 	CellContentOffset uint16     // offset for cell content, only meaningful for leaf page
 	FreeBytes         uint16     // free bytes in this page
+
+	OverflowCell []Cell // array store overflow cell
 }
 
 // an in memory cell
@@ -94,6 +96,7 @@ func NewMemPage(pageNo PageNumber, flag uint8) (*Mempage, error) {
 	mem.IsDataLeaf = bool(mem.IsDataPage && mem.IsLeaf)
 	mem.CellNum = 0
 	mem.PageNo = pageNo
+	mem.FreeBytes = 4096
 	if mem.PageNo == 1 {
 		mem.IsPageOne = true
 	} else {
@@ -113,6 +116,7 @@ func NewMemPage(pageNo PageNumber, flag uint8) (*Mempage, error) {
 	} else {
 		first += 12
 	}
+	mem.FreeBytes -= first // initial free bytes is 4096 - page header length
 	mem.CellIndexOffset = first
 	mem.HeaderOffset = hdr
 	mem.CellContentOffset = 4096
@@ -208,25 +212,32 @@ func (mem *Mempage) GetKthCell(k uint16) Cell {
 		Payload:     mem.RawData[offset+10 : offset+10+size]}
 }
 
-func (mem *Mempage) InsertCellFast(cell Cell, i uint16) {
+func (mem *Mempage) InsertCellFast(cell Cell, i uint16) error {
 	// convert cell to raw bytes
 	buf := bytes.NewBuffer([]byte{})
 	binary.Write(buf, binary.LittleEndian, cell.LeftChildPageNo)
 	binary.Write(buf, binary.LittleEndian, cell.Payloadsize)
 	binary.Write(buf, binary.LittleEndian, cell.Key)
 	binary.Write(buf, binary.LittleEndian, cell.Payload)
-	// TODO: finish the remaining task for insert
-
-	// insert into CellIndex
-	base := mem.CellIndexOffset + 2*i
-	copy(mem.RawData[base+2:], mem.RawData[base:base+2*(mem.CellNum-i)])
-	// insert into CellContent
 	size := uint16(buf.Len())
-	offset := mem.AllocateSpace(size)
-	copy(mem.RawData[offset:], buf.Bytes())
-	utils.SetUint16(mem.RawData[base:], offset)
-	// increase CellNum in mem
-	mem.CellNum += 1
-	utils.SetUint16(mem.RawData[mem.HeaderOffset+1:], mem.CellNum)
+	// TODO: finish the remaining task for insert
+	if size+2 > mem.FreeBytes {
+		// the free bytes in this page can not hold the cell index + cell content
+		// store the cell in the overflow array. Balance is handled in caller function
+		mem.OverflowCell = append(mem.OverflowCell, cell)
 
+	} else {
+		// insert into CellIndex
+		base := mem.CellIndexOffset + 2*i
+		copy(mem.RawData[base+2:], mem.RawData[base:base+2*(mem.CellNum-i)])
+		// insert into CellContent
+		offset := mem.AllocateSpace(size)
+		copy(mem.RawData[offset:], buf.Bytes())
+		utils.SetUint16(mem.RawData[base:], offset)
+		// increase CellNum in mem
+		mem.CellNum += 1
+		utils.SetUint16(mem.RawData[mem.HeaderOffset+1:], mem.CellNum)
+		mem.FreeBytes -= (2 + size) // 2 bytes for cell index
+	}
+	return nil
 }

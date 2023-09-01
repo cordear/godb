@@ -65,7 +65,10 @@ func (btc *btCursor) Insert(key uint32, data []byte) error {
 		btc.CellIndex++
 	}
 	// TODO: finish the cursor insert
-	btc.Mem.InsertCellFast(cell, btc.CellIndex)
+	err = btc.Mem.InsertCellFast(cell, btc.CellIndex)
+	if err != nil {
+		return nil
+	}
 	return nil
 }
 
