@@ -34,7 +34,7 @@ const (
 //    0       1     flags
 //    1       2     number of cells
 //    3       2     first free block
-//    5       2     top offset of the cell content area
+//    5       2     cell content offset
 //    7       1     reserved
 //    8       4     right child page number. only used in non-leaf page
 
@@ -51,6 +51,7 @@ type Mempage struct {
 	HeaderOffset      uint16     // 100 if page 1, otherwise 0
 	CellIndexOffset   uint16     // offset for cell index
 	CellContentOffset uint16     // offset for cell content, only meaningful for leaf page
+	FreeBytes         uint16     // free bytes in this page
 }
 
 // an in memory cell
@@ -121,7 +122,7 @@ func NewMemPage(pageNo PageNumber, flag uint8) (*Mempage, error) {
 	return mem, nil
 }
 
-// return the first byte of the allocated space that bigger than size
+// find a sapce bigger enough to hold at least size byte on the freeblock
 func (mem *Mempage) FindFreeSapce(size uint16) uint16 {
 	freePointer := utils.GetUint16(mem.RawData[mem.HeaderOffset+3:]) // the first free block offset
 	freeSize := utils.GetUint16(mem.RawData[freePointer+2:])         // the first free block size
@@ -134,17 +135,22 @@ func (mem *Mempage) FindFreeSapce(size uint16) uint16 {
 	return freePointer
 }
 
+// allocate space bigger enough to hoid size bytes.
+// return the offset of the allocated space
 func (mem *Mempage) AllocateSpace(size uint16) uint16 {
-	var offset uint16 = 0 // the return offset
-	// if there is a freeblock, allocate sapce from freeblock
-	if mem.RawData[mem.HeaderOffset+3] != 0 || mem.RawData[mem.HeaderOffset+4] != 0 {
+	var offset uint16 = 0                      // the return offset
+	gap := mem.CellIndexOffset + 2*mem.CellNum // the first byte offset of the gap between cell index and cell content
+	top := utils.GetUint16(mem.RawData[mem.HeaderOffset+5:])
+
+	// if there is a freeblock, try allocate sapce from freeblock
+	if (mem.RawData[mem.HeaderOffset+3] != 0 || mem.RawData[mem.HeaderOffset+4] != 0) && gap+2 <= top {
 		offset = mem.FindFreeSapce(size)
 		return offset
 	}
 	//allocate sapce form the area between cell pointer array and cell content area
-	top := utils.GetUint16(mem.RawData[mem.HeaderOffset+5:])
 	top -= size
 	utils.SetUint16(mem.RawData[mem.HeaderOffset+5:], top)
+	mem.CellContentOffset = top
 	offset = top
 	return offset
 }
