@@ -1,6 +1,8 @@
-package pager
+package btree
 
-import "errors"
+import (
+	"errors"
+)
 
 var (
 	ErrorCacheMiss = errors.New("cache missed")

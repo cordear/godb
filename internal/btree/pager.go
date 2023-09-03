@@ -1,4 +1,4 @@
-package pager
+package btree
 
 const (
 	PAGE_CACHE_FETCH uint8 = 0x1 // only fetch a page cache
@@ -22,21 +22,4 @@ func (pgr *pager) FetchPage(pageNo PageNumber, flag uint8) (*PageCacheEntry, err
 
 func (pgr *pager) GetPageNumber() PageNumber {
 	return pgr.PageNumber
-}
-
-// function used for test
-func NewPager() pager {
-	var pager pager
-	var pcache pageCache
-	pcache.cacheHash = make(map[PageNumber]*PageCacheEntry)
-	// generate page one for test
-	pageOne, err := NewMemPage(1, PAGE_DATA|PAGE_LEAF|PAGE_LEAF_DATA)
-	if err != nil {
-		panic(err)
-	}
-	pcache.cacheHash[1] = &PageCacheEntry{PageNo: 1, Dirty: true, Data: pageOne}
-	pcache.pager = &pager
-	pager.PageCache = &pcache
-	pager.PageNumber = 1
-	return pager
 }

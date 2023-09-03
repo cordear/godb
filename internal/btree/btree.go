@@ -1,9 +1,5 @@
 package btree
 
-import (
-	"godb/internal/pager"
-)
-
 type Btree interface {
 	Insert(key uint32, data []byte) error
 }
@@ -14,7 +10,7 @@ type BtCursor interface {
 	MoveTo(key uint32)
 	MoveNext() error
 	MoveToParent() error
-	MovetoChild(pageNo pager.PageNumber)
+	MovetoChild(pageNo PageNumber)
 	CompareKey(key uint32) int8
 }
 
@@ -23,20 +19,20 @@ type btree struct {
 }
 
 type btCursor struct {
-	Btree      *btree           // btree that own the curosr
-	Mem        *pager.Mempage   // the in memory page the curosr point to
-	CellIndex  uint16           // cell index the curosr point to
-	RootPageNo pager.PageNumber // btree root page namber
-	IsMatch    int8             // last compare result
-	PStack     []*pager.Mempage // stack for parents of current page
+	Btree             *btree     // btree that own the curosr
+	Mem               *Mempage   // the in memory page the curosr point to
+	CellIndex         uint16     // cell index the curosr point to
+	RootPageNo        PageNumber // btree root page namber
+	LastCompareResult int8       // last compare result
+	PStack            []*Mempage // stack for parents of current page
 }
 
 // sharable content of the btree
 type BtreeShared struct {
-	Pager    pager.Pager   // the page cache
-	PageOne  pager.Mempage // first page of the database, always in memory
-	BtCursor []BtCursor    // current opened cursor on the btree
-	NumPage  uint32        // number of page in the database
+	Pager    Pager      // the page cache
+	PageOne  Mempage    // first page of the database, always in memory
+	BtCursor []BtCursor // current opened cursor on the btree
+	NumPage  uint32     // number of page in the database
 }
 
 // func (bt *btree) Insert(key uint32, data []byte) error {
@@ -54,14 +50,16 @@ func (btc *btCursor) Insert(key uint32, data []byte) error {
 	if err != nil {
 		return err
 	}
-	cell := pager.NewCell(key, data)
+	cell := NewCell(key, data)
 	if loc == 0 { // if loc == 0, then the cursor is in the key itself
 		cell.LeftChildPageNo = btc.Mem.GetKthLeftPageNumber(btc.CellIndex)
 	} else if loc > 0 && btc.Mem.CellNum > 0 {
-		// the cursor point to a value bigger than the key. The key will insert on the left side
+		// the cursor point to a value bigger than the key.
+		// The key will insert on the left side
 
 	} else if loc < 0 {
-		// the cursor point to a value smaller than the key, The key will insert on the right side
+		// the cursor point to a value smaller than the key,
+		// The key will insert on the right side
 		btc.CellIndex++
 	}
 	// TODO: finish the cursor insert
@@ -69,13 +67,39 @@ func (btc *btCursor) Insert(key uint32, data []byte) error {
 	if err != nil {
 		return nil
 	}
+	// insert produce at least one overflow cell, which means the page is full.
+	// the page thus need a balance.
+	if len(btc.Mem.OverflowCell) > 0 {
+		err = btc.balance()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// balance the page the cursor currently point to
+func (btc *btCursor) balance() error {
+	mem := btc.Mem
+	if len(mem.OverflowCell) == 0 && mem.FreeBytes*3 <= 4096*2 {
+		// if page has no overflow cell and page has enough space,
+		// there is no need to balance.
+		return nil
+	} else if len(btc.PStack) == 0 {
+		// the root page of the btree is overfull
+		rightChild, err := mem.BalanceDeep()
+		if err != nil {
+			return err
+		}
+		btc.PStack = append(btc.PStack, rightChild)
+	}
 	return nil
 }
 
 // move to the root page of the btree
 func (btc *btCursor) MoveToRoot() error {
 	// get the root page
-	rootMem, err := btc.Btree.Shared.Pager.FetchPage(btc.RootPageNo, pager.PAGE_CACHE_FETCH|pager.PAGE_CACHE_CREAT)
+	rootMem, err := btc.Btree.Shared.Pager.FetchPage(btc.RootPageNo, PAGE_CACHE_FETCH|PAGE_CACHE_CREAT)
 	if err != nil {
 		return err
 	}
@@ -102,7 +126,7 @@ func (btc *btCursor) MoveTo(key uint32) (int8, error) {
 	}
 	var lo int32 = 0
 	var hi int32 = int32(btc.Mem.CellNum) - 1
-	var child pager.PageNumber = 0
+	var child PageNumber = 0
 	var c int8 = -1
 	// binary search the content index array
 	for {
@@ -113,7 +137,7 @@ func (btc *btCursor) MoveTo(key uint32) (int8, error) {
 			if c > 0 {
 				hi = int32(btc.CellIndex) - 1
 			} else if c == 0 {
-				btc.IsMatch = c
+				btc.LastCompareResult = c
 				return c, nil
 			} else {
 				lo = int32(btc.CellIndex) + 1
@@ -131,7 +155,7 @@ func (btc *btCursor) MoveTo(key uint32) (int8, error) {
 			child = btc.Mem.GetKthLeftPageNumber(uint16(lo))
 		}
 		if child == 0 {
-			btc.IsMatch = c
+			btc.LastCompareResult = c
 			return c, nil
 		}
 		err := btc.MoveToChild(child)
@@ -141,9 +165,9 @@ func (btc *btCursor) MoveTo(key uint32) (int8, error) {
 	}
 }
 
-func (btc *btCursor) MoveToChild(pageNo pager.PageNumber) error {
+func (btc *btCursor) MoveToChild(pageNo PageNumber) error {
 	// get the child page
-	childMem, err := btc.Btree.Shared.Pager.FetchPage(pageNo, pager.PAGE_CACHE_FETCH|pager.PAGE_CACHE_CREAT)
+	childMem, err := btc.Btree.Shared.Pager.FetchPage(pageNo, PAGE_CACHE_FETCH|PAGE_CACHE_CREAT)
 	if err != nil {
 		return err
 	}

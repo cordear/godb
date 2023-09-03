@@ -1,4 +1,4 @@
-package pager
+package btree
 
 import (
 	"bytes"
@@ -52,8 +52,7 @@ type Mempage struct {
 	CellIndexOffset   uint16     // offset for cell index
 	CellContentOffset uint16     // offset for cell content, only meaningful for leaf page
 	FreeBytes         uint16     // free bytes in this page
-
-	OverflowCell []Cell // array store overflow cell
+	OverflowCell      []Cell     // array store overflow cell
 }
 
 // an in memory cell
@@ -157,6 +156,11 @@ func (mem *Mempage) AllocateSpace(size uint16) uint16 {
 	mem.CellContentOffset = top
 	offset = top
 	return offset
+}
+
+func (mem *Mempage) BalanceDeep() (*Mempage, error) {
+	// TODO: finish balance_deep
+	return nil, nil
 }
 
 // return the right child of the page. if the page is a leaf page,
