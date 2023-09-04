@@ -40,19 +40,20 @@ const (
 
 // A page in memory
 type Mempage struct {
-	IsInit            bool       // true if init before, false if need reinit
-	PageNo            PageNumber // page number
-	IsDataPage        bool       // true if table b-tree. false if index b-tree
-	IsDataLeaf        bool       // true if table b-tree leaf. false otherwise
-	IsLeaf            bool       // true if leaf page. false otherwise
-	IsPageOne         bool       // true if page 1. false otherwise
-	CellNum           uint16     // number of cell inside the page
-	RawData           []byte     // raw data of the page
-	HeaderOffset      uint16     // 100 if page 1, otherwise 0
-	CellIndexOffset   uint16     // offset for cell index
-	CellContentOffset uint16     // offset for cell content, only meaningful for leaf page
-	FreeBytes         uint16     // free bytes in this page
-	OverflowCell      []Cell     // array store overflow cell
+	IsInit            bool         // true if init before, false if need reinit
+	PageNo            PageNumber   // page number
+	IsDataPage        bool         // true if table b-tree. false if index b-tree
+	IsDataLeaf        bool         // true if table b-tree leaf. false otherwise
+	IsLeaf            bool         // true if leaf page. false otherwise
+	IsPageOne         bool         // true if page 1. false otherwise
+	CellNum           uint16       // number of cell inside the page
+	RawData           []byte       // raw data of the page
+	HeaderOffset      uint16       // 100 if page 1, otherwise 0
+	CellIndexOffset   uint16       // offset for cell index
+	CellContentOffset uint16       // offset for cell content, only meaningful for leaf page
+	FreeBytes         uint16       // free bytes in this page
+	OverflowCell      []Cell       // array store overflow cell
+	BShared           *BtreeShared // the btree shared content the mempage belong to
 }
 
 // an in memory cell
@@ -81,6 +82,14 @@ func checkFlag(flag uint8) bool {
 		return false
 	}
 	return true
+}
+
+// create a empty page contains no data
+func NewZeroPage(pageNo PageNumber) (*Mempage, error) {
+	mem := new(Mempage)
+	raw := make([]byte, 4096)
+	mem.RawData = raw
+	return mem, nil
 }
 
 func NewMemPage(pageNo PageNumber, flag uint8) (*Mempage, error) {
@@ -158,6 +167,8 @@ func (mem *Mempage) AllocateSpace(size uint16) uint16 {
 	return offset
 }
 
+// BalanceDeep is used when the cursor currently point to the root page and
+// the root page need balance.
 func (mem *Mempage) BalanceDeep() (*Mempage, error) {
 	// TODO: finish balance_deep
 	return nil, nil

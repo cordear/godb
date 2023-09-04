@@ -16,8 +16,19 @@ type pager struct {
 	PageNumber PageNumber // page number in the database file
 }
 
+// fetch a page from pager.
+// if the page already in the page cache, return the cache directly.
+// if there is a cache miss and PAGE_CACHE_CREAT flag is set, create a new page.
+// othewise return nil
 func (pgr *pager) FetchPage(pageNo PageNumber, flag uint8) (*PageCacheEntry, error) {
-	return pgr.PageCache.FetchPage(pageNo, flag)
+	if pageNo == 0 {
+		return nil, errorInvaildPageNumber
+	}
+	pce, err := pgr.PageCache.FetchPage(pageNo, flag)
+	if err != nil {
+		return nil, err
+	}
+	return pce, nil
 }
 
 func (pgr *pager) GetPageNumber() PageNumber {

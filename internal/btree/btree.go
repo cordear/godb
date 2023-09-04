@@ -1,5 +1,13 @@
 package btree
 
+import (
+	"errors"
+)
+
+var (
+	errorInvaildPageNumber = errors.New("Invaild page number")
+)
+
 type Btree interface {
 	Insert(key uint32, data []byte) error
 }
@@ -35,14 +43,24 @@ type BtreeShared struct {
 	NumPage  uint32     // number of page in the database
 }
 
-// func (bt *btree) Insert(key uint32, data []byte) error {
-// 	pte, err := bt.Shared.Pager.FetchPage(bt.rootPageNo, pager.PAGE_CACHE_CREAT|pager.PAGE_CACHE_FETCH)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	root := pte.Data
-// 	loc := root.BinarySearchKey(key)
-// }
+//	func (bt *btree) Insert(key uint32, data []byte) error {
+//		pte, err := bt.Shared.Pager.FetchPage(bt.rootPageNo, pager.PAGE_CACHE_CREAT|pager.PAGE_CACHE_FETCH)
+//		if err != nil {
+//			return err
+//		}
+//		root := pte.Data
+//		loc := root.BinarySearchKey(key)
+//	}
+
+// get a page from the pager.
+func (bt *btree) GetPage(pageNo PageNumber, flags uint8) (*Mempage, error) {
+	pce, err := bt.Shared.Pager.FetchPage(pageNo, flags)
+	if err != nil {
+		return nil, err
+	}
+	// TODO: finish get page logic
+	return nil, nil
+}
 
 func (btc *btCursor) Insert(key uint32, data []byte) error {
 	// move to the proper position
