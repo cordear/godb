@@ -59,7 +59,19 @@ func (bt *btree) GetPage(pageNo PageNumber, flags uint8) (*MemPage, error) {
 		return nil, err
 	}
 	// TODO: finish get page logic
-	return nil, nil
+	return pce.ToMemPage(pageNo, bt.Shared), nil
+}
+
+// AllocateNewPage will allocate a new page from the database file.
+func (bt *btree) AllocateNewPage() (*MemPage, error) {
+	// FIXME: currently, the AllocateNewPage always allocate a new page
+	// because three are no free page management.
+	bt.Shared.NumPage += 1
+	mem, err := bt.GetPage(PageNumber(bt.Shared.NumPage), PAGE_CACHE_FETCH|PAGE_CACHE_CREAT)
+	if err != nil {
+		return nil, err
+	}
+	return mem, nil
 }
 
 func (btc *btCursor) Insert(key uint32, data []byte) error {
@@ -117,7 +129,7 @@ func (btc *btCursor) balance() error {
 // MoveToRoot move to the root page of the btree
 func (btc *btCursor) MoveToRoot() error {
 	// get the root page
-	rootMem, err := btc.Btree.Shared.Pager.FetchPage(btc.RootPageNo, PAGE_CACHE_FETCH|PAGE_CACHE_CREAT)
+	rootMem, err := btc.Btree.GetPage(btc.RootPageNo, PAGE_CACHE_FETCH|PAGE_CACHE_CREAT)
 	if err != nil {
 		return err
 	}
@@ -128,10 +140,10 @@ func (btc *btCursor) MoveToRoot() error {
 	return nil
 }
 
-// MoveTo move the cursor to a proper position relate to the key. return value >
-// 0 if cursor point to a value bigger than the search key or cursor on an empty
-// page return value = 0 if cursor point to exact the same key return value < 0
-// if cursor point to a value smaller than the search key
+// MoveTo move the cursor to a proper position relate to the key.
+// return value > 0 if cursor point to a value bigger than the search key or cursor on an empty page
+// return value = 0 if cursor point to exact the same key
+// return value < 0 if cursor point to a value smaller than the search key
 func (btc *btCursor) MoveTo(key uint32) (int8, error) {
 	// reset the cursor to root page, the CellIndex is set to 0.
 	err := btc.MoveToRoot()

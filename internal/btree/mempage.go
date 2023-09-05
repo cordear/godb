@@ -7,10 +7,6 @@ import (
 	"godb/internal/utils"
 )
 
-var (
-	ErrorInvaildPageType = errors.New("invaild page type")
-)
-
 // PageNumber is an uint32 value that indicate the location of a page in database
 // file. each page has a unique page number that must bigger than 0. page number
 // zero only used as function return value that means no such page.
@@ -40,7 +36,7 @@ const (
 
 // MemPage is  page in memory
 type MemPage struct {
-	IsInit            bool       // true if init before, false if need reinit
+	IsInit            bool       // true if init before, false if the page need re-init
 	PageNo            PageNumber // page number
 	IsDataPage        bool       // true if table b-tree. false if index b-tree
 	IsDataLeaf        bool       // true if table b-tree leaf. false otherwise
@@ -53,13 +49,13 @@ type MemPage struct {
 	CellContentOffset uint16     // offset for cell content, only meaningful for leaf page
 	FreeBytes         uint16     // free bytes in this page
 	OverflowCell      []Cell     // array store overflow cell
-	BShared           *Shared    // the btree shared content the mempage belong to
+	BShared           *Shared    // the btree shared content the MemPage belong to
 }
 
 // Cell is an in memory cell
 type Cell struct {
 	LeftChildPageNo PageNumber // left child page number
-	Payloadsize     uint16     // the payload size, exclude the key
+	PayloadSize     uint16     // the payload size, exclude the key
 	Key             uint32     // key
 	RawData         []byte     // pointer to the cell itself
 	Payload         []byte     // pointer to payload
@@ -69,7 +65,7 @@ func NewCell(key uint32, payload []byte) Cell {
 	var cell Cell
 	cell.LeftChildPageNo = 0
 	cell.Key = key
-	cell.Payloadsize = uint16(len(payload))
+	cell.PayloadSize = uint16(len(payload))
 	cell.Payload = payload
 	return cell
 }
@@ -96,12 +92,12 @@ func NewMemPage(pageNo PageNumber, flag uint8) (*MemPage, error) {
 	mem := new(MemPage)
 	raw := make([]byte, 4096)
 	if !checkFlag(flag) {
-		return nil, errors.New("invaild flag")
+		return nil, errors.New("invalid flag")
 	}
 	mem.RawData = raw
-	mem.IsLeaf = bool((flag & PAGE_LEAF) != 0)
-	mem.IsDataPage = bool((flag & PAGE_DATA) != 0)
-	mem.IsDataLeaf = bool(mem.IsDataPage && mem.IsLeaf)
+	mem.IsLeaf = (flag & PAGE_LEAF) != 0
+	mem.IsDataPage = (flag & PAGE_DATA) != 0
+	mem.IsDataLeaf = mem.IsDataPage && mem.IsLeaf
 	mem.CellNum = 0
 	mem.PageNo = pageNo
 	mem.FreeBytes = 4096
@@ -128,7 +124,7 @@ func NewMemPage(pageNo PageNumber, flag uint8) (*MemPage, error) {
 	mem.CellIndexOffset = first
 	mem.HeaderOffset = hdr
 	mem.CellContentOffset = 4096
-	raw[hdr] = uint8(flag)
+	raw[hdr] = flag
 	utils.SetUint16(raw[hdr+1:], mem.CellNum)
 	utils.SetUint16(raw[hdr+5:], 4096)
 	return mem, nil
@@ -221,7 +217,7 @@ func (mem *MemPage) GetKthCell(k uint16) Cell {
 	leftChild := mem.GetKthLeftPageNumber(k)
 	key := mem.GetKthKey(k)
 	return Cell{LeftChildPageNo: leftChild,
-		Payloadsize: size,
+		PayloadSize: size,
 		Key:         key,
 		RawData:     mem.RawData[offset : offset+10+size],
 		Payload:     mem.RawData[offset+10 : offset+10+size]}
@@ -231,7 +227,7 @@ func (mem *MemPage) InsertCellFast(cell Cell, i uint16) error {
 	// convert cell to raw bytes
 	buf := bytes.NewBuffer([]byte{})
 	binary.Write(buf, binary.LittleEndian, cell.LeftChildPageNo)
-	binary.Write(buf, binary.LittleEndian, cell.Payloadsize)
+	binary.Write(buf, binary.LittleEndian, cell.PayloadSize)
 	binary.Write(buf, binary.LittleEndian, cell.Key)
 	binary.Write(buf, binary.LittleEndian, cell.Payload)
 	size := uint16(buf.Len())
@@ -252,7 +248,7 @@ func (mem *MemPage) InsertCellFast(cell Cell, i uint16) error {
 		// increase CellNum in mem
 		mem.CellNum += 1
 		utils.SetUint16(mem.RawData[mem.HeaderOffset+1:], mem.CellNum)
-		mem.FreeBytes -= (2 + size) // 2 bytes for cell index
+		mem.FreeBytes -= 2 + size // 2 bytes for cell index
 	}
 	return nil
 }
