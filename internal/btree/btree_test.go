@@ -1,14 +1,13 @@
 package btree
 
 import (
+	"github.com/stretchr/testify/assert"
 	"os"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 )
 
-// dump a mempage content to file
-func DumpToFile(mem Mempage) {
+// dump a MemPage content to file
+func DumpToFile(mem MemPage) {
 	f, err := os.Create("test.db")
 	if err != nil {
 		panic(err)
@@ -36,7 +35,7 @@ func NewPager() pager {
 
 func TestSerialInsert(t *testing.T) {
 	pager := NewPager()
-	bs := BtreeShared{}
+	bs := Shared{}
 	bs.Pager = &pager
 	btree := btree{}
 	btree.Shared = &bs

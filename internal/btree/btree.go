@@ -5,7 +5,7 @@ import (
 )
 
 var (
-	errorInvaildPageNumber = errors.New("Invaild page number")
+	errorInvalidPageNumber = errors.New("invalid page number")
 )
 
 type Btree interface {
@@ -23,22 +23,22 @@ type BtCursor interface {
 }
 
 type btree struct {
-	Shared *BtreeShared // shared content
+	Shared *Shared // shared content
 }
 
 type btCursor struct {
-	Btree             *btree     // btree that own the curosr
-	Mem               *Mempage   // the in memory page the curosr point to
-	CellIndex         uint16     // cell index the curosr point to
-	RootPageNo        PageNumber // btree root page namber
+	Btree             *btree     // btree that own the cursor
+	Mem               *MemPage   // the in memory page the cursor point to
+	CellIndex         uint16     // cell index the cursor point to
+	RootPageNo        PageNumber // btree root page number
 	LastCompareResult int8       // last compare result
-	PStack            []*Mempage // stack for parents of current page
+	PStack            []*MemPage // stack for parents of current page
 }
 
-// sharable content of the btree
-type BtreeShared struct {
+// Shared  is  the sharable content of the btree
+type Shared struct {
 	Pager    Pager      // the page cache
-	PageOne  Mempage    // first page of the database, always in memory
+	PageOne  MemPage    // first page of the database, always in memory
 	BtCursor []BtCursor // current opened cursor on the btree
 	NumPage  uint32     // number of page in the database
 }
@@ -52,8 +52,8 @@ type BtreeShared struct {
 //		loc := root.BinarySearchKey(key)
 //	}
 
-// get a page from the pager.
-func (bt *btree) GetPage(pageNo PageNumber, flags uint8) (*Mempage, error) {
+// GetPage get a page from the pager.
+func (bt *btree) GetPage(pageNo PageNumber, flags uint8) (*MemPage, error) {
 	pce, err := bt.Shared.Pager.FetchPage(pageNo, flags)
 	if err != nil {
 		return nil, err
@@ -114,7 +114,7 @@ func (btc *btCursor) balance() error {
 	return nil
 }
 
-// move to the root page of the btree
+// MoveToRoot move to the root page of the btree
 func (btc *btCursor) MoveToRoot() error {
 	// get the root page
 	rootMem, err := btc.Btree.Shared.Pager.FetchPage(btc.RootPageNo, PAGE_CACHE_FETCH|PAGE_CACHE_CREAT)
@@ -128,10 +128,10 @@ func (btc *btCursor) MoveToRoot() error {
 	return nil
 }
 
-// move the cursor to a proper position relate to the key.
-// return value > 0 if cursor point to a value bigger than the search key or cursor on a empty page
-// return value = 0 if cursor point to exact the same key
-// return value < 0 if cursor point to a value smaller than the search key
+// MoveTo move the cursor to a proper position relate to the key. return value >
+// 0 if cursor point to a value bigger than the search key or cursor on an empty
+// page return value = 0 if cursor point to exact the same key return value < 0
+// if cursor point to a value smaller than the search key
 func (btc *btCursor) MoveTo(key uint32) (int8, error) {
 	// reset the cursor to root page, the CellIndex is set to 0.
 	err := btc.MoveToRoot()
@@ -164,7 +164,7 @@ func (btc *btCursor) MoveTo(key uint32) (int8, error) {
 		// the key is bigger than all the key in the page, move to the right child
 		if lo >= int32(btc.Mem.CellNum) {
 			child = btc.Mem.GetRightChild()
-			// if no right child, then the cursor is point to a value than smaller then the key
+			// if no right child, then the cursor is point to a value than smaller than the key
 			if child == 0 {
 				return -1, nil
 			}
@@ -224,7 +224,7 @@ func (btc *btCursor) MoveNext() error {
 				if err != nil {
 					return err
 				}
-				// if the cursor not come from a right page of a internal page, the cursor is in correct position
+				// if the cursor not come from a right page of an internal page, the cursor is in correct position
 				if btc.CellIndex < btc.Mem.CellNum {
 					break
 				}
@@ -251,10 +251,8 @@ func (btc *btCursor) MoveToLeftMost() error {
 	return nil
 }
 
-// compare key to the key that cursor current point to.
-// > 0 if cursorKey > key;
-// = 0 if cursorKey = key;
-// < 0 if cursorKey < key.
+// CompareKey compare key to the key that cursor current point to. > 0 if
+// cursorKey > key; = 0 if cursorKey = key; < 0 if cursorKey < key.
 func (btc *btCursor) CompareKey(key uint32) int8 {
 	cursorKey := btc.Mem.GetKthKey(btc.CellIndex)
 	if cursorKey > key {
@@ -266,7 +264,8 @@ func (btc *btCursor) CompareKey(key uint32) int8 {
 	}
 }
 
-// the caller should guaratee there has at least one parent in the stack
+// MoveToParent move the cursor to the root
+// the caller should guarantee there has at least one parent in the stack
 func (btc *btCursor) MoveToParent() error {
 	parent := btc.PStack[len(btc.PStack)-1]
 	// pop the direct parent

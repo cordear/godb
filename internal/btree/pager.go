@@ -8,6 +8,7 @@ const (
 type Pager interface {
 	FetchPage(pageNo PageNumber, flag uint8) (*PageCacheEntry, error)
 	// Insert(pageNo PageNumber, data []byte) error
+
 	GetPageNumber() PageNumber
 }
 
@@ -16,13 +17,13 @@ type pager struct {
 	PageNumber PageNumber // page number in the database file
 }
 
-// fetch a page from pager.
+// FetchPage fetch a page from pager.
 // if the page already in the page cache, return the cache directly.
 // if there is a cache miss and PAGE_CACHE_CREAT flag is set, create a new page.
-// othewise return nil
+// otherwise return nil
 func (pgr *pager) FetchPage(pageNo PageNumber, flag uint8) (*PageCacheEntry, error) {
 	if pageNo == 0 {
-		return nil, errorInvaildPageNumber
+		return nil, errorInvalidPageNumber
 	}
 	pce, err := pgr.PageCache.FetchPage(pageNo, flag)
 	if err != nil {

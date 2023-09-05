@@ -11,19 +11,19 @@ var (
 	ErrorInvaildPageType = errors.New("invaild page type")
 )
 
-// a PageNumber is a uint32 value that indicate the location of a page in database file.
-// each page has a unique page number that must bigger than 0.
-// page number zero only used as function return value that means no such page.
+// PageNumber is an uint32 value that indicate the location of a page in database
+// file. each page has a unique page number that must bigger than 0. page number
+// zero only used as function return value that means no such page.
 type PageNumber uint32
 
-// The flag used in page header. A vaild flag must be one of:
+// The flag used in page header. A valid flag must be one of:
 // - PAGE_INDEX
 // - PAGE_INDEX | PAGE_LEAF
 // - PAGE_DATA | PAGE_LEAF_DATA
 // - PAGE_DATA | PAGE_LEAF_DATA | PAGE_LEAF
 const (
 	PAGE_DATA      uint8 = 0x01 // a table b-tree page
-	PAGE_INDEX     uint8 = 0x02 // a index b-tree page
+	PAGE_INDEX     uint8 = 0x02 // an index b-tree page
 	PAGE_LEAF_DATA uint8 = 0x04 // a table b-tree leaf page
 	PAGE_LEAF      uint8 = 0x08 // a leaf page
 )
@@ -38,25 +38,25 @@ const (
 //    7       1     reserved
 //    8       4     right child page number. only used in non-leaf page
 
-// A page in memory
-type Mempage struct {
-	IsInit            bool         // true if init before, false if need reinit
-	PageNo            PageNumber   // page number
-	IsDataPage        bool         // true if table b-tree. false if index b-tree
-	IsDataLeaf        bool         // true if table b-tree leaf. false otherwise
-	IsLeaf            bool         // true if leaf page. false otherwise
-	IsPageOne         bool         // true if page 1. false otherwise
-	CellNum           uint16       // number of cell inside the page
-	RawData           []byte       // raw data of the page
-	HeaderOffset      uint16       // 100 if page 1, otherwise 0
-	CellIndexOffset   uint16       // offset for cell index
-	CellContentOffset uint16       // offset for cell content, only meaningful for leaf page
-	FreeBytes         uint16       // free bytes in this page
-	OverflowCell      []Cell       // array store overflow cell
-	BShared           *BtreeShared // the btree shared content the mempage belong to
+// MemPage is  page in memory
+type MemPage struct {
+	IsInit            bool       // true if init before, false if need reinit
+	PageNo            PageNumber // page number
+	IsDataPage        bool       // true if table b-tree. false if index b-tree
+	IsDataLeaf        bool       // true if table b-tree leaf. false otherwise
+	IsLeaf            bool       // true if leaf page. false otherwise
+	IsPageOne         bool       // true if page 1. false otherwise
+	CellNum           uint16     // number of cell inside the page
+	RawData           []byte     // raw data of the page
+	HeaderOffset      uint16     // 100 if page 1, otherwise 0
+	CellIndexOffset   uint16     // offset for cell index
+	CellContentOffset uint16     // offset for cell content, only meaningful for leaf page
+	FreeBytes         uint16     // free bytes in this page
+	OverflowCell      []Cell     // array store overflow cell
+	BShared           *Shared    // the btree shared content the mempage belong to
 }
 
-// an in memory cell
+// Cell is an in memory cell
 type Cell struct {
 	LeftChildPageNo PageNumber // left child page number
 	Payloadsize     uint16     // the payload size, exclude the key
@@ -84,16 +84,16 @@ func checkFlag(flag uint8) bool {
 	return true
 }
 
-// create a empty page contains no data
-func NewZeroPage(pageNo PageNumber) (*Mempage, error) {
-	mem := new(Mempage)
+// NewZeroPage create a empty page contains no data
+func NewZeroPage(pageNo PageNumber) (*MemPage, error) {
+	mem := new(MemPage)
 	raw := make([]byte, 4096)
 	mem.RawData = raw
 	return mem, nil
 }
 
-func NewMemPage(pageNo PageNumber, flag uint8) (*Mempage, error) {
-	mem := new(Mempage)
+func NewMemPage(pageNo PageNumber, flag uint8) (*MemPage, error) {
+	mem := new(MemPage)
 	raw := make([]byte, 4096)
 	if !checkFlag(flag) {
 		return nil, errors.New("invaild flag")
@@ -134,8 +134,8 @@ func NewMemPage(pageNo PageNumber, flag uint8) (*Mempage, error) {
 	return mem, nil
 }
 
-// find a sapce bigger enough to hold at least size byte on the freeblock
-func (mem *Mempage) FindFreeSapce(size uint16) uint16 {
+// FindFreeSpace find a space bigger enough to hold at least size byte on the free block
+func (mem *MemPage) FindFreeSpace(size uint16) uint16 {
 	freePointer := utils.GetUint16(mem.RawData[mem.HeaderOffset+3:]) // the first free block offset
 	freeSize := utils.GetUint16(mem.RawData[freePointer+2:])         // the first free block size
 	if freeSize > size {
@@ -143,23 +143,23 @@ func (mem *Mempage) FindFreeSapce(size uint16) uint16 {
 		utils.SetUint16(mem.RawData[freePointer+2:], remain)
 		return freePointer + remain
 	}
-	// FIXME: this return is just a placeholder to make the complier happy
+	// FIXME: this return is just a placeholder to make the compiler happy
 	return freePointer
 }
 
-// allocate space bigger enough to hoid size bytes.
+// AllocateSpace allocate space bigger enough to hold size bytes.
 // return the offset of the allocated space
-func (mem *Mempage) AllocateSpace(size uint16) uint16 {
+func (mem *MemPage) AllocateSpace(size uint16) uint16 {
 	var offset uint16 = 0                      // the return offset
 	gap := mem.CellIndexOffset + 2*mem.CellNum // the first byte offset of the gap between cell index and cell content
 	top := utils.GetUint16(mem.RawData[mem.HeaderOffset+5:])
 
-	// if there is a freeblock, try allocate sapce from freeblock
+	// if there is a free block, try to allocate space from free block
 	if (mem.RawData[mem.HeaderOffset+3] != 0 || mem.RawData[mem.HeaderOffset+4] != 0) && gap+2 <= top {
-		offset = mem.FindFreeSapce(size)
+		offset = mem.FindFreeSpace(size)
 		return offset
 	}
-	//allocate sapce form the area between cell pointer array and cell content area
+	//allocate space form the area between cell pointer array and cell content area
 	top -= size
 	utils.SetUint16(mem.RawData[mem.HeaderOffset+5:], top)
 	mem.CellContentOffset = top
@@ -169,14 +169,14 @@ func (mem *Mempage) AllocateSpace(size uint16) uint16 {
 
 // BalanceDeep is used when the cursor currently point to the root page and
 // the root page need balance.
-func (mem *Mempage) BalanceDeep() (*Mempage, error) {
+func (mem *MemPage) BalanceDeep() (*MemPage, error) {
 	// TODO: finish balance_deep
 	return nil, nil
 }
 
-// return the right child of the page. if the page is a leaf page,
+// GetRightChild return the right child of the page. if the page is a leaf page,
 // then return 0.
-func (mem *Mempage) GetRightChild() PageNumber {
+func (mem *MemPage) GetRightChild() PageNumber {
 	// only the non-leaf child has a right child
 	if mem.IsLeaf {
 		return PageNumber(0)
@@ -184,38 +184,38 @@ func (mem *Mempage) GetRightChild() PageNumber {
 	return PageNumber(utils.GetUint32(mem.RawData[mem.HeaderOffset+8:]))
 }
 
-func (mem *Mempage) GetKthCellIndex(k uint16) uint16 {
+func (mem *MemPage) GetKthCellIndex(k uint16) uint16 {
 	return utils.GetUint16(mem.RawData[mem.CellIndexOffset+k*2:])
 }
 
-func (mem *Mempage) GetKthLeftPageNumber(k uint16) PageNumber {
+func (mem *MemPage) GetKthLeftPageNumber(k uint16) PageNumber {
 	offset := mem.GetKthCellIndex(k)
 	return PageNumber(utils.GetUint32(mem.RawData[offset:]))
 }
 
-func (mem *Mempage) GetKthCellSize(k uint16) uint16 {
+func (mem *MemPage) GetKthCellSize(k uint16) uint16 {
 	offset := mem.GetKthCellIndex(k) + 4
 	return utils.GetUint16(mem.RawData[offset:])
 }
 
-func (mem *Mempage) GetKthKey(k uint16) uint32 {
+func (mem *MemPage) GetKthKey(k uint16) uint32 {
 	offset := mem.GetKthCellIndex(k) + 6
 	return utils.GetUint32(mem.RawData[offset:])
 }
 
-func (mem *Mempage) GetKthCellContent(k uint16) ([]byte, uint16) {
+func (mem *MemPage) GetKthCellContent(k uint16) ([]byte, uint16) {
 	offset := mem.GetKthCellIndex(k)
 	size := mem.GetKthCellSize(k)
 	return mem.RawData[offset+10:], size
 }
 
-func (mem *Mempage) WriteCellContent(key uint32, data []byte) error {
+func (mem *MemPage) WriteCellContent(key uint32, data []byte) error {
 
 	return nil
 }
 
-// get kth cell in the memPage
-func (mem *Mempage) GetKthCell(k uint16) Cell {
+// GetKthCell gets kth cell in the memPage
+func (mem *MemPage) GetKthCell(k uint16) Cell {
 	offset := mem.GetKthCellIndex(k)
 	size := mem.GetKthCellSize(k)
 	leftChild := mem.GetKthLeftPageNumber(k)
@@ -227,7 +227,7 @@ func (mem *Mempage) GetKthCell(k uint16) Cell {
 		Payload:     mem.RawData[offset+10 : offset+10+size]}
 }
 
-func (mem *Mempage) InsertCellFast(cell Cell, i uint16) error {
+func (mem *MemPage) InsertCellFast(cell Cell, i uint16) error {
 	// convert cell to raw bytes
 	buf := bytes.NewBuffer([]byte{})
 	binary.Write(buf, binary.LittleEndian, cell.LeftChildPageNo)

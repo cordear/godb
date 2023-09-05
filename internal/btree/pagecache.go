@@ -15,7 +15,7 @@ type PageCache interface {
 type PageCacheEntry struct {
 	PageNo PageNumber // the page number of the cache entry
 	Dirty  bool       // true if the data in the cache is modified
-	Data   *Mempage   // the cached page data
+	Data   *MemPage   // the cached page data
 }
 
 type pageCache struct {
@@ -23,8 +23,8 @@ type pageCache struct {
 	cacheHash map[PageNumber]*PageCacheEntry // page cache hash, store the page cache entry pointer
 }
 
-// TODO: finish the fetch page logic
 func (pcache *pageCache) FetchPage(pageNo PageNumber, flag uint8) (*PageCacheEntry, error) {
+	// TODO: finish the fetch page logic
 	if entry, ok := pcache.cacheHash[pageNo]; ok {
 		return entry, nil
 	} else if (flag & PAGE_CACHE_CREAT) > 0 {
