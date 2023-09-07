@@ -36,7 +36,7 @@ const (
 
 // MemPage is  page in memory
 type MemPage struct {
-	IsInit            bool       // true if init before, false if the page need re-init
+	IsInit            bool       // true if init before, false if the page need init
 	PageNo            PageNumber // page number
 	IsDataPage        bool       // true if table b-tree. false if index b-tree
 	IsDataLeaf        bool       // true if table b-tree leaf. false otherwise
@@ -80,7 +80,8 @@ func checkFlag(flag uint8) bool {
 	return true
 }
 
-// NewZeroPage create a empty page contains no data
+// NewZeroPage create an empty page contains no data, all the fields of newly created MemPage
+// is set to default value.
 func NewZeroPage(pageNo PageNumber) (*MemPage, error) {
 	mem := new(MemPage)
 	raw := make([]byte, 4096)
@@ -128,6 +129,72 @@ func NewMemPage(pageNo PageNumber, flag uint8) (*MemPage, error) {
 	utils.SetUint16(raw[hdr+1:], mem.CellNum)
 	utils.SetUint16(raw[hdr+5:], 4096)
 	return mem, nil
+}
+
+// ComputeFreeBytes will set the FreeBytes field of the MemPage
+func (mem *MemPage) ComputeFreeBytes() error {
+	top := mem.CellContentOffset
+	cellLast := mem.CellIndexOffset + 2*mem.CellNum
+	mem.FreeBytes = top - cellLast
+	return nil
+}
+
+// InitMemPage will init other field in mem so that those fields match the RawData.
+// if the IsInit is set to false, InitMemPage will return ErrorCorruptedPage.
+// InitMemPage will not init the FreeBytes field. the caller need another call of ComputeFreeBytes
+func (mem *MemPage) InitMemPage() error {
+	if mem.IsInit {
+		return ErrorCorruptedPage
+	}
+	if mem.PageNo == 1 {
+		mem.IsPageOne = true
+	}
+	// check and init the flags
+	flags := mem.RawData[mem.HeaderOffset]
+	if !checkFlag(flags) {
+		return ErrorCorruptedPage
+	}
+	if (flags & PAGE_DATA) > 0 {
+		mem.IsDataPage = true
+	}
+	if (flags & PAGE_LEAF) > 0 {
+		mem.IsLeaf = true
+	} else {
+		// a leaf page header contains 4 bytes right child PageNumber
+		mem.CellIndexOffset += 4
+	}
+	if mem.IsDataPage && mem.IsLeaf {
+		mem.IsDataLeaf = true
+	}
+	mem.CellIndexOffset += mem.HeaderOffset + 8
+	mem.CellContentOffset = utils.GetUint16(mem.RawData[mem.HeaderOffset+5:])
+	mem.CellNum = utils.GetUint16(mem.RawData[mem.HeaderOffset+1:])
+	mem.IsInit = true
+	return nil
+}
+
+// CopyMemPage copy the content of src to dst
+func CopyMemPage(dst *MemPage, src *MemPage) error {
+	cellContentOffset := src.CellContentOffset
+	fromHeaderOffset := src.HeaderOffset
+	toHeaderOffset := 0
+	if dst.PageNo == 1 {
+		toHeaderOffset += 100
+	}
+	// copy the cellContent, page header and cellIndex array from src to dst
+	copy(dst.RawData[cellContentOffset:], src.RawData[cellContentOffset:])
+	copy(dst.RawData[toHeaderOffset:], src.RawData[fromHeaderOffset:src.CellIndexOffset+2*src.CellNum])
+	// flag the dst as un-init
+	dst.IsInit = false
+	err := dst.InitMemPage()
+	if err != nil {
+		return err
+	}
+	err = dst.ComputeFreeBytes()
+	if err != nil {
+		return nil
+	}
+	return nil
 }
 
 // FindFreeSpace find a space bigger enough to hold at least size byte on the free block
