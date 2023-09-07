@@ -5,7 +5,8 @@ import (
 )
 
 var (
-	errorInvalidPageNumber = errors.New("invalid page number")
+	ErrorInvalidPageNumber = errors.New("invalid page number")
+	ErrorCorruptedPage     = errors.New("page corrupted")
 )
 
 type Btree interface {
@@ -37,10 +38,11 @@ type btCursor struct {
 
 // Shared  is  the sharable content of the btree
 type Shared struct {
-	Pager    Pager      // the page cache
-	PageOne  MemPage    // first page of the database, always in memory
-	BtCursor []BtCursor // current opened cursor on the btree
-	NumPage  uint32     // number of page in the database
+	Pager      Pager      // the page cache
+	PageOne    MemPage    // first page of the database, always in memory
+	BtCursor   []BtCursor // current opened cursor on the btree
+	NumPage    uint32     // number of page in the database
+	UsableSize uint32     // the usable bytes on each page associate with the btree
 }
 
 //	func (bt *btree) Insert(key uint32, data []byte) error {
@@ -111,12 +113,13 @@ func (btc *btCursor) Insert(key uint32, data []byte) error {
 // balance the page the cursor currently point to
 func (btc *btCursor) balance() error {
 	mem := btc.Mem
-	if len(mem.OverflowCell) == 0 && mem.FreeBytes*3 <= 4096*2 {
+	if len(mem.OverflowCell) == 0 &&
+		mem.FreeBytes*3 <= 4096*2 {
 		// if page has no overflow cell and page has enough space,
 		// there is no need to balance.
 		return nil
 	} else if len(btc.PStack) == 0 {
-		// the root page of the btree is overfull
+		// the root page need balance
 		rightChild, err := mem.BalanceDeep()
 		if err != nil {
 			return err
@@ -133,9 +136,9 @@ func (btc *btCursor) MoveToRoot() error {
 	if err != nil {
 		return err
 	}
-	btc.Mem = rootMem.Data
+	btc.Mem = rootMem
 	btc.CellIndex = 0
-	// clear the parents stack
+	// clean the parents stack
 	btc.PStack = nil
 	return nil
 }
@@ -155,7 +158,7 @@ func (btc *btCursor) MoveTo(key uint32) (int8, error) {
 		return 1, nil
 	}
 	var lo int32 = 0
-	var hi int32 = int32(btc.Mem.CellNum) - 1
+	var hi = int32(btc.Mem.CellNum) - 1
 	var child PageNumber = 0
 	var c int8 = -1
 	// binary search the content index array
@@ -255,7 +258,10 @@ func (btc *btCursor) MoveToLeftMost() error {
 	for {
 		leftPageNo := btc.Mem.GetKthLeftPageNumber(btc.CellIndex)
 		if leftPageNo != 0 {
-			btc.MoveToChild(leftPageNo)
+			err := btc.MoveToChild(leftPageNo)
+			if err != nil {
+				return err
+			}
 		} else {
 			break
 		}
