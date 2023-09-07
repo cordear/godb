@@ -43,6 +43,7 @@ func (pcache *pageCache) FetchPage(pageNo PageNumber, flag uint8) (*PageCacheEnt
 }
 
 // ToMemPage return the MemPage the PageCacheEntry hold
+// if the MemPage not init before, ToMemPage will init the MemPage's PageNo, BShared nad HeaderOffset field
 func (pce PageCacheEntry) ToMemPage(pageNo PageNumber, shared *Shared) *MemPage {
 	mem := pce.Data
 	if mem.PageNo != pageNo {
