@@ -23,7 +23,7 @@ type pager struct {
 // otherwise return nil
 func (pgr *pager) FetchPage(pageNo PageNumber, flag uint8) (*PageCacheEntry, error) {
 	if pageNo == 0 {
-		return nil, errorInvalidPageNumber
+		return nil, ErrorInvalidPageNumber
 	}
 	pce, err := pgr.PageCache.FetchPage(pageNo, flag)
 	if err != nil {
