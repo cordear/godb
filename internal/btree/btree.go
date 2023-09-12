@@ -7,6 +7,7 @@ import (
 var (
 	ErrorInvalidPageNumber = errors.New("invalid page number")
 	ErrorCorruptedPage     = errors.New("page corrupted")
+	ErrorInvalidFlags      = errors.New("invalid flags")
 )
 
 type Btree interface {
@@ -36,7 +37,7 @@ type btCursor struct {
 	PStack            []*MemPage // stack for parents of current page
 }
 
-// Shared  is  the sharable content of the btree
+// Shared is the sharable content of the btree
 type Shared struct {
 	Pager      Pager      // the page cache
 	PageOne    MemPage    // first page of the database, always in memory
@@ -55,21 +56,21 @@ type Shared struct {
 //	}
 
 // GetPage get a page from the pager.
-func (bt *btree) GetPage(pageNo PageNumber, flags uint8) (*MemPage, error) {
-	pce, err := bt.Shared.Pager.FetchPage(pageNo, flags)
+func (bs *Shared) GetPage(pageNo PageNumber, flags uint8) (*MemPage, error) {
+	pce, err := bs.Pager.FetchPage(pageNo, flags)
 	if err != nil {
 		return nil, err
 	}
 	// TODO: finish get page logic
-	return pce.ToMemPage(pageNo, bt.Shared), nil
+	return pce.ToMemPage(pageNo, bs), nil
 }
 
 // AllocateNewPage will allocate a new page from the database file.
-func (bt *btree) AllocateNewPage() (*MemPage, error) {
-	// FIXME: currently, the AllocateNewPage always allocate a new page
+func (bs *Shared) AllocateNewPage() (*MemPage, error) {
+	// FIXME: currently, the AllocateNewPage always allocate a new page rather than use free list
 	// because three are no free page management.
-	bt.Shared.NumPage += 1
-	mem, err := bt.GetPage(PageNumber(bt.Shared.NumPage), PAGE_CACHE_FETCH|PAGE_CACHE_CREAT)
+	bs.NumPage += 1
+	mem, err := bs.GetPage(PageNumber(bs.NumPage), PAGE_CACHE_FETCH|PAGE_CACHE_CREAT)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +133,7 @@ func (btc *btCursor) balance() error {
 // MoveToRoot move to the root page of the btree
 func (btc *btCursor) MoveToRoot() error {
 	// get the root page
-	rootMem, err := btc.Btree.GetPage(btc.RootPageNo, PAGE_CACHE_FETCH|PAGE_CACHE_CREAT)
+	rootMem, err := btc.Btree.Shared.GetPage(btc.RootPageNo, PAGE_CACHE_FETCH|PAGE_CACHE_CREAT)
 	if err != nil {
 		return err
 	}
