@@ -3,7 +3,6 @@ package btree
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"godb/internal/utils"
 )
 
@@ -70,7 +69,7 @@ func NewCell(key uint32, payload []byte) Cell {
 	return cell
 }
 
-func checkFlag(flag uint8) bool {
+func checkFlags(flag uint8) bool {
 	if flag != PAGE_INDEX &&
 		flag != PAGE_INDEX|PAGE_LEAF &&
 		flag != PAGE_DATA|PAGE_LEAF_DATA &&
@@ -78,6 +77,23 @@ func checkFlag(flag uint8) bool {
 		return false
 	}
 	return true
+}
+
+// setFlags will check the flag correctness and set the MemPage field according to the flag.
+func setFlags(mem *MemPage, flag uint8) error {
+	if !checkFlags(flag) {
+		return ErrorInvalidFlags
+	}
+	if (flag & PAGE_DATA) > 0 {
+		mem.IsDataPage = true
+	}
+	if (flag & PAGE_LEAF_DATA) > 0 {
+		mem.IsDataLeaf = true
+	}
+	if (flag & PAGE_LEAF) > 0 {
+		mem.IsLeaf = true
+	}
+	return nil
 }
 
 // NewZeroPage create an empty page contains no data, all the fields of newly created MemPage
@@ -89,48 +105,6 @@ func NewZeroPage(pageNo PageNumber) (*MemPage, error) {
 	return mem, nil
 }
 
-func NewMemPage(pageNo PageNumber, flag uint8) (*MemPage, error) {
-	mem := new(MemPage)
-	raw := make([]byte, 4096)
-	if !checkFlag(flag) {
-		return nil, errors.New("invalid flag")
-	}
-	mem.RawData = raw
-	mem.IsLeaf = (flag & PAGE_LEAF) != 0
-	mem.IsDataPage = (flag & PAGE_DATA) != 0
-	mem.IsDataLeaf = mem.IsDataPage && mem.IsLeaf
-	mem.CellNum = 0
-	mem.PageNo = pageNo
-	mem.FreeBytes = 4096
-	if mem.PageNo == 1 {
-		mem.IsPageOne = true
-	} else {
-		mem.IsPageOne = false
-	}
-	mem.IsInit = true
-	hdr := uint16(0)
-	var first uint16
-	if mem.IsPageOne {
-		first += 100
-		hdr += 100
-	} else {
-		first = 0
-	}
-	if mem.IsLeaf {
-		first += 8
-	} else {
-		first += 12
-	}
-	mem.FreeBytes -= first // initial free bytes is 4096 - page header length
-	mem.CellIndexOffset = first
-	mem.HeaderOffset = hdr
-	mem.CellContentOffset = 4096
-	raw[hdr] = flag
-	utils.SetUint16(raw[hdr+1:], mem.CellNum)
-	utils.SetUint16(raw[hdr+5:], 4096)
-	return mem, nil
-}
-
 // ComputeFreeBytes will set the FreeBytes field of the MemPage
 func (mem *MemPage) ComputeFreeBytes() error {
 	top := mem.CellContentOffset
@@ -139,9 +113,43 @@ func (mem *MemPage) ComputeFreeBytes() error {
 	return nil
 }
 
+// ZeroPage will clean the MemPage content and set up the page again so that
+// it appears like a clean MemPage that hold no cell.
+// ZeroPage will not change PageNumber and BShared or any field relate to that.
+func (mem *MemPage) ZeroPage(flags uint8) error {
+	// check and set flags
+	err := setFlags(mem, flags)
+	if err != nil {
+		return err
+	}
+	hdr := mem.HeaderOffset
+	mem.RawData[hdr] = flags
+	// clean raw data
+	copy(mem.RawData[hdr:], make([]byte, 4096))
+
+	var first = hdr
+	if mem.IsLeaf {
+		// leaf page has 4 bytes right child PageNumber in page header
+		first += 12
+	} else {
+		first += 8
+	}
+	mem.CellIndexOffset = first
+	mem.CellContentOffset = 4096
+	// set cell number and first free block offset to 0
+	utils.SetUint32(mem.RawData[hdr+1:], 0)
+	// set cell content offset to max usable size
+	utils.SetUint16(mem.RawData[hdr+5:], 4096)
+	mem.FreeBytes = 4096 - first
+	mem.OverflowCell = []Cell{}
+	mem.CellNum = 0
+	mem.IsInit = true
+	return nil
+}
+
 // InitMemPage will init other field in mem so that those fields match the RawData.
 // if the IsInit is set to false, InitMemPage will return ErrorCorruptedPage.
-// InitMemPage will not init the FreeBytes field. the caller need another call of ComputeFreeBytes
+// InitMemPage will not init the FreeBytes field. the caller need another call of ComputeFreeBytes if needed.
 func (mem *MemPage) InitMemPage() error {
 	if mem.IsInit {
 		return ErrorCorruptedPage
@@ -151,7 +159,7 @@ func (mem *MemPage) InitMemPage() error {
 	}
 	// check and init the flags
 	flags := mem.RawData[mem.HeaderOffset]
-	if !checkFlag(flags) {
+	if !checkFlags(flags) {
 		return ErrorCorruptedPage
 	}
 	if (flags & PAGE_DATA) > 0 {
@@ -190,6 +198,7 @@ func CopyMemPage(dst *MemPage, src *MemPage) error {
 	if err != nil {
 		return err
 	}
+	// compute and set the FreeBytes field.
 	err = dst.ComputeFreeBytes()
 	if err != nil {
 		return nil
@@ -234,6 +243,26 @@ func (mem *MemPage) AllocateSpace(size uint16) uint16 {
 // the root page need balance.
 func (mem *MemPage) BalanceDeep() (*MemPage, error) {
 	// TODO: finish balance_deep
+	bShared := mem.BShared
+	// allocate a new page. The new page will become the MemPage's new right child
+	child, err := bShared.AllocateNewPage()
+	if err != nil {
+		return nil, err
+	}
+	// copy mem content to child
+	err = CopyMemPage(child, mem)
+	if err != nil {
+		return nil, err
+	}
+
+	child.OverflowCell = mem.OverflowCell
+
+	// zero root page, set child to the right child of the root page
+	err = mem.ZeroPage(child.RawData[0] & ^PAGE_LEAF)
+	if err != nil {
+		return nil, err
+	}
+	utils.SetUint32(mem.RawData[mem.HeaderOffset+8:], uint32(child.PageNo))
 	return nil, nil
 }
 
